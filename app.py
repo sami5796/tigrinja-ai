@@ -166,14 +166,18 @@ def translate():
         return jsonify({'error': str(e)}), 500
 
 def get_ai_response(message):
-    """Get AI response from Gemini"""
+    """Get AI response from Gemini with explicit timeout"""
     import time
+    from concurrent.futures import ThreadPoolExecutor, TimeoutError as FutureTimeoutError
+    
+    # CRITICAL: Vercel timeout is 10s, so we need to finish in ~8s
+    MAX_AI_TIME = 7  # Maximum seconds to wait for AI response
     
     # Retry logic for rate limits (reduced delays for Vercel timeout)
-    max_retries = 2  # Reduced from 3 to save time
-    retry_delay = 1  # Reduced from 2 seconds
+    max_retries = 1  # Only 1 attempt to save time - no retries
+    retry_delay = 1
     
-    print(f"[AI] Starting get_ai_response, max_retries: {max_retries}")
+    print(f"[AI] Starting get_ai_response, max_time: {MAX_AI_TIME}s, max_retries: {max_retries}")
     
     for attempt in range(max_retries):
         try:
@@ -192,30 +196,37 @@ def get_ai_response(message):
             
             # Generate content with generation config for faster responses
             generation_config = {
-                'max_output_tokens': 1024,  # Limit response length for speed
-                'temperature': 0.7,  # Balanced creativity/speed
+                'max_output_tokens': 512,  # Further reduced from 1024 for speed
+                'temperature': 0.7,
             }
             
-            # Generate content
-            print(f"[AI] Calling generate_content (max_tokens: 1024)...")
+            # Generate content WITH TIMEOUT using ThreadPoolExecutor
+            print(f"[AI] Calling generate_content with {MAX_AI_TIME}s timeout...")
             gen_start = time.time()
             
+            def call_gemini():
+                return model.generate_content(message, generation_config=generation_config)
+            
             try:
-                response = model.generate_content(
-                    message,
-                    generation_config=generation_config
-                )
+                # Use ThreadPoolExecutor to add timeout
+                with ThreadPoolExecutor(max_workers=1) as executor:
+                    future = executor.submit(call_gemini)
+                    try:
+                        response = future.result(timeout=MAX_AI_TIME)
+                        gen_time = time.time() - gen_start
+                        print(f"[AI] generate_content completed in {gen_time:.2f}s")
+                    except FutureTimeoutError:
+                        gen_time = time.time() - gen_start
+                        print(f"[AI] ❌ TIMEOUT: generate_content exceeded {MAX_AI_TIME}s (took {gen_time:.2f}s)")
+                        future.cancel()
+                        return None
             except Exception as e:
                 gen_time = time.time() - gen_start
-                if gen_time > 8:
-                    print(f"[AI] ⚠️ Request taking too long ({gen_time:.2f}s), may timeout")
+                print(f"[AI] Exception after {gen_time:.2f}s: {type(e).__name__}: {e}")
                 raise
             
-            gen_time = time.time() - gen_start
-            print(f"[AI] generate_content took {gen_time:.2f}s")
-            
-            if gen_time > 7:
-                print(f"[AI] ⚠️ WARNING: API call took {gen_time:.2f}s - close to Vercel timeout!")
+            if gen_time > 6:
+                print(f"[AI] ⚠️ WARNING: API call took {gen_time:.2f}s - slow but completed!")
             
             # Handle different response formats
             print(f"[AI] Processing response...")
