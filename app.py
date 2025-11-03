@@ -17,19 +17,28 @@ app = Flask(
 )
 
 # Configure Gemini AI - use environment variable for cloud deployment
+# IMPORTANT: This runs at import time - adds to cold start time
+import time as time_module
+_init_start = time_module.time()
+
 GEMINI_API_KEY = os.environ.get('GEMINI_API_KEY', 'AIzaSyDxxKQoHOqeE9e2EKZ4O4Qtm70HnFfH5hw')
 
 # Validate API key exists
 if not GEMINI_API_KEY or GEMINI_API_KEY.strip() == '':
     print("ERROR: GEMINI_API_KEY environment variable is not set!")
 else:
-    print(f"Gemini API key configured (length: {len(GEMINI_API_KEY)})")
+    print(f"[INIT] Gemini API key configured (length: {len(GEMINI_API_KEY)})")
 
 try:
+    _genai_start = time_module.time()
     genai.configure(api_key=GEMINI_API_KEY)
-    print("Gemini API configured successfully")
+    _genai_time = time_module.time() - _genai_start
+    print(f"[INIT] Gemini API configured successfully ({_genai_time:.2f}s)")
 except Exception as e:
-    print(f"ERROR configuring Gemini API: {e}")
+    print(f"[INIT] ERROR configuring Gemini API: {e}")
+
+_init_time = time_module.time() - _init_start
+print(f"[INIT] Total app.py initialization took {_init_time:.2f}s")
 
 # Cache available model name
 AVAILABLE_MODEL = None
@@ -37,23 +46,27 @@ AVAILABLE_MODEL = None
 def get_available_model():
     """Get an available Gemini model - optimized for speed"""
     global AVAILABLE_MODEL
+    model_start = time_module.time()
+    
     if AVAILABLE_MODEL:
+        print(f"[MODEL] Using cached model: {AVAILABLE_MODEL}")
         return AVAILABLE_MODEL
     
-    # Skip slow list_models() call - just use fastest model directly
-    # This saves ~1-2 seconds on cold starts in Vercel
-    fastest_models = [
-        'models/gemini-2.0-flash-exp',  # Latest experimental (fastest)
-        'models/gemini-2.0-flash',      # Stable fast model
-        'models/gemini-flash-latest',   # Flash latest
-        'models/gemini-1.5-flash'       # Fallback
-    ]
+    # CRITICAL: Use ONLY the fastest, most reliable model directly
+    # Don't try multiple models - each attempt is slow!
+    # gemini-1.5-flash is the fastest and most reliable
+    AVAILABLE_MODEL = 'models/gemini-1.5-flash'
+    model_time = time_module.time() - model_start
+    print(f"[MODEL] Selected model: {AVAILABLE_MODEL} (took {model_time:.3f}s)")
+    return AVAILABLE_MODEL
     
-    # Try the fastest models first without listing all models
-    for model_name in fastest_models:
-        AVAILABLE_MODEL = model_name
-        print(f"[MODEL] Using fast model: {model_name}")
-        return model_name
+    # OLD CODE - too slow, tries multiple models
+    # fastest_models = [
+    #     'models/gemini-2.0-flash-exp',
+    #     'models/gemini-2.0-flash',
+    #     'models/gemini-flash-latest',
+    #     'models/gemini-1.5-flash'
+    # ]
     
     # If we get here, try listing models as last resort (but this is slow)
     try:
