@@ -3,6 +3,7 @@ from urllib.parse import quote
 import os
 from deep_translator import GoogleTranslator
 import google.generativeai as genai
+import requests
 
 # Get the directory where this file is located
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
@@ -176,121 +177,78 @@ def translate():
         return jsonify({'error': str(e)}), 500
 
 def get_ai_response(message):
-    """Get AI response from Gemini with explicit timeout"""
+    """Get AI response from Gemini using REST API directly (faster than SDK)"""
     import time
-    from concurrent.futures import ThreadPoolExecutor, TimeoutError as FutureTimeoutError
+    import requests
+    import json
     
     # Check if Gemini is configured
     if GEMINI_API_KEY is None:
         print("[AI] ERROR: GEMINI_API_KEY is None - Gemini not configured")
         return None
     
-    # CRITICAL: Vercel timeout is 10s, we MUST finish in <2.5s for AI call
-    # Gemini is consistently timing out at 3s, so reduce further
-    MAX_AI_TIME = 2.5  # Maximum seconds - very aggressive!
+    # CRITICAL: Vercel timeout is 10s, we MUST finish in <2s for AI call
+    MAX_AI_TIME = 2.0  # Maximum seconds - very aggressive!
     
-    print(f"[AI] Starting get_ai_response, max_time: {MAX_AI_TIME}s")
+    print(f"[AI] Starting get_ai_response via REST API, max_time: {MAX_AI_TIME}s")
     attempt_start = time.time()
     
     try:
-        # Configure Gemini if not already done (but only once to avoid warnings)
-        try:
-            # Only configure if not already configured (check if configured)
-            if not hasattr(genai, '_configured') or not genai._configured:
-                genai.configure(api_key=GEMINI_API_KEY)
-                genai._configured = True
-        except Exception as e:
-            print(f"[AI] WARNING: Error configuring Gemini (might already be configured): {e}")
+        # Use REST API directly - faster than SDK
+        url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key={GEMINI_API_KEY}"
         
-        # Get available model (with caching) - should be instant
-        print(f"[AI] Getting available model...")
-        model_name = get_available_model()
-        if not model_name:
-            print("[AI] ERROR: No available Gemini model found")
-            return None
-        
-        print(f"[AI] Using model: {model_name}")
-        try:
-            # Use request_options to potentially speed up the request
-            model = genai.GenerativeModel(
-                model_name,
-                # Try to reduce overhead
-            )
-        except Exception as e:
-            print(f"[AI] ERROR creating GenerativeModel: {e}")
-            return None
-        
-        # Generate content with generation config for faster responses
-        # Reduce tokens further to speed up generation
-        generation_config = {
-            'max_output_tokens': 100,  # Even shorter for speed!
-            'temperature': 0.7,
+        payload = {
+            "contents": [{
+                "parts": [{
+                    "text": message
+                }]
+            }],
+            "generationConfig": {
+                "maxOutputTokens": 100,  # Short responses
+                "temperature": 0.7
+            }
         }
         
-        # Generate content WITH TIMEOUT using ThreadPoolExecutor
-        print(f"[AI] Calling generate_content with {MAX_AI_TIME}s timeout...")
+        print(f"[AI] Calling Gemini REST API with {MAX_AI_TIME}s timeout...")
         gen_start = time.time()
-        response = None
-        gen_time = 0
-        
-        def call_gemini():
-            try:
-                return model.generate_content(message, generation_config=generation_config)
-            except Exception as e:
-                print(f"[AI] ERROR in call_gemini: {type(e).__name__}: {e}")
-                raise
         
         try:
-            # Use ThreadPoolExecutor to add timeout
-            with ThreadPoolExecutor(max_workers=1) as executor:
-                future = executor.submit(call_gemini)
-                try:
-                    response = future.result(timeout=MAX_AI_TIME)
-                    gen_time = time.time() - gen_start
-                    print(f"[AI] generate_content completed in {gen_time:.2f}s")
-                except FutureTimeoutError:
-                    gen_time = time.time() - gen_start
-                    print(f"[AI] ❌ TIMEOUT: generate_content exceeded {MAX_AI_TIME}s (took {gen_time:.2f}s)")
-                    try:
-                        future.cancel()
-                    except:
-                        pass
-                    return None
-                except Exception as e:
-                    gen_time = time.time() - gen_start
-                    print(f"[AI] Exception in future.result() after {gen_time:.2f}s: {type(e).__name__}: {e}")
-                    import traceback
-                    traceback.print_exc()
-                    return None
-        except Exception as e:
+            # Use requests with explicit timeout - faster than SDK
+            response = requests.post(
+                url,
+                json=payload,
+                timeout=MAX_AI_TIME,
+                headers={'Content-Type': 'application/json'}
+            )
+            gen_time = time.time() - gen_start
+            print(f"[AI] REST API call completed in {gen_time:.2f}s")
+            
+            if response.status_code == 200:
+                result = response.json()
+                # Extract text from response
+                if 'candidates' in result and len(result['candidates']) > 0:
+                    candidate = result['candidates'][0]
+                    if 'content' in candidate and 'parts' in candidate['content']:
+                        if len(candidate['content']['parts']) > 0:
+                            text = candidate['content']['parts'][0].get('text', '').strip()
+                            if text:
+                                print(f"[AI] ✅ Got response via REST API (length: {len(text)})")
+                                return text
+                
+                print("[AI] ⚠️ WARNING: Empty response from Gemini REST API")
+                return None
+            else:
+                print(f"[AI] ERROR: REST API returned status {response.status_code}: {response.text[:200]}")
+                return None
+                
+        except requests.exceptions.Timeout:
+            gen_time = time.time() - gen_start
+            print(f"[AI] ❌ TIMEOUT: REST API call exceeded {MAX_AI_TIME}s (took {gen_time:.2f}s)")
+            return None
+        except requests.exceptions.RequestException as e:
             gen_time = time.time() - gen_start
             print(f"[AI] Exception after {gen_time:.2f}s: {type(e).__name__}: {e}")
-            import traceback
-            traceback.print_exc()
             return None
-        
-        if not response:
-            print(f"[AI] No response received")
-            return None
-        
-        # Handle different response formats
-        print(f"[AI] Processing response...")
-        if hasattr(response, 'text') and response.text:
-            result = response.text.strip()
-            print(f"[AI] ✅ Got response via .text (length: {len(result)})")
-            return result
-        elif hasattr(response, 'candidates') and response.candidates:
-            if len(response.candidates) > 0:
-                candidate = response.candidates[0]
-                if hasattr(candidate, 'content') and candidate.content:
-                    if hasattr(candidate.content, 'parts') and candidate.content.parts:
-                        result = candidate.content.parts[0].text.strip()
-                        print(f"[AI] ✅ Got response via candidates (length: {len(result)})")
-                        return result
-        
-        print("[AI] ⚠️ WARNING: Empty response from Gemini")
-        print(f"[AI] Response attributes: {dir(response)}")
-        return None
         
     except Exception as e:
         error_msg = str(e)
@@ -298,17 +256,6 @@ def get_ai_response(message):
         
         attempt_time = time.time() - attempt_start
         print(f"[AI] ❌ Error after {attempt_time:.2f}s: {error_type}: {error_msg}")
-        
-        # Reset model cache if it fails
-        global AVAILABLE_MODEL
-        AVAILABLE_MODEL = None
-        
-        # Provide helpful error messages
-        if 'API key' in error_msg or 'authentication' in error_msg.lower():
-            print("API key authentication error - check your API key")
-        else:
-            import traceback
-            traceback.print_exc()
         
         return None
 
