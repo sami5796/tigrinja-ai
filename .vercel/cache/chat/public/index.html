@@ -1,0 +1,98 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ዝሓስብ ኮምፒተር ብ´ትግርኛ | Tigrinja AI</title>
+    <link rel="stylesheet" href="/css/style.css">
+</head>
+<body>
+    <div class="container">
+        <div class="chat-wrapper">
+            <div class="chat-header">
+                <div class="header-content">
+                    <div class="logo-icon">
+                        <svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                            <path d="M12 2L2 7L12 12L22 7L12 2Z" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+                            <path d="M2 17L12 22L22 17" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+                            <path d="M2 12L12 17L22 12" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+                            <circle cx="12" cy="12" r="1.5" fill="currentColor"/>
+                        </svg>
+                    </div>
+                    <div class="header-text">
+                        <div class="title-wrapper">
+                            <h1 data-i18n="main-title">ዝሓስብ ኮምፒተር ብ´ትግርኛ</h1>
+                        </div>
+                        <p class="subtitle" data-i18n="subtitle">Tigrinja AI</p>
+                    </div>
+                    <div class="ui-lang-switcher">
+                        <select id="uiLang" class="ui-lang-select">
+                            <option value="ti" selected>ትግርኛ</option>
+                            <option value="en">English</option>
+                            <option value="no">Norsk</option>
+                        </select>
+                    </div>
+                </div>
+                <div class="language-selector">
+                    <div class="lang-select-group reply-lang-selector">
+                        <label data-i18n="reply-in-label">መልሲ ብ:</label>
+                        <select id="replyLang" class="lang-select">
+                            <option value="en" data-i18n-option="english">English</option>
+                            <option value="ti" selected data-i18n-option="tigrinya">ትግርኛ</option>
+                            <option value="no" data-i18n-option="norwegian">Norsk</option>
+                            <option value="ar" data-i18n-option="arabic">Arabic</option>
+                            <option value="am" data-i18n-option="amharic">Amharic</option>
+                        </select>
+                    </div>
+                    <div class="lang-info">
+                        <svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                            <path d="M12 22C17.5228 22 22 17.5228 22 12C22 6.47715 17.5228 2 12 2C6.47715 2 2 6.47715 2 12C2 17.5228 6.47715 22 12 22Z" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+                            <path d="M12 16V12M12 8H12.01" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+                        </svg>
+                        <span data-i18n="auto-detect-info">ቋንቋ ኣውቶማቲክ ይሕወስ</span>
+                    </div>
+                </div>
+            </div>
+
+            <div class="chat-messages" id="chatMessages">
+                <div class="message bot-message">
+                    <div class="message-content">
+                        <p data-i18n="welcome-message">👋 ሰላም! ኣነ <strong>Tigrinja AI</strong> እየ። ንምልሲኻ ዝመርጽ ቋንቋ ኣብ ላዕሊ ምረጽ፡ ድሕሪኡ ብእተኻእለካ ቋንቋ ሕቶ ሓቲንካ! መልእኽትኻ ብኣውቶማቲክ ክርድኦ እየ፡ ከምኡውን ብቕኑዕ ክመልስ እየ።</p>
+                    </div>
+                </div>
+            </div>
+
+            <div class="input-section">
+                <div class="input-wrapper">
+                    <input 
+                        type="text" 
+                        id="messageInput" 
+                        data-i18n-placeholder="input-placeholder"
+                        placeholder="ብዝመርጽካዮ ቋንቋ ሕተት..."
+                        autocomplete="off"
+                    >
+                    <div class="button-group">
+                        <button id="translateBtn" class="action-btn translate-btn" data-i18n-title="translate-tooltip" title="ኣብ Google Translate ክፍትን ንምትርጓም">
+                            <svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                                <path d="M12 2L2 7L12 12L22 7L12 2Z" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+                                <path d="M2 17L12 22L22 17" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+                            </svg>
+                            <span data-i18n="translate-btn">ምትርጓም</span>
+                        </button>
+                        <button id="sendBtn" class="action-btn send-btn" data-i18n-title="send-tooltip" title="መልእኽቲ ሰዲድ">
+                            <svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                                <path d="M22 2L11 13" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+                                <path d="M22 2L15 22L11 13L2 9L22 2Z" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+                            </svg>
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script src="/js/i18n.js"></script>
+    <script src="/js/script.js"></script>
+</body>
+</html>
+

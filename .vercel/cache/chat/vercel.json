@@ -1,0 +1,11 @@
+{
+  "functions": {
+    "api/chat.py": {
+      "maxDuration": 30
+    },
+    "api/translate.py": {
+      "maxDuration": 30
+    }
+  }
+}
+
