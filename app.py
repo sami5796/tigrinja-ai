@@ -181,30 +181,47 @@ def get_ai_response(message):
     max_retries = 2  # Reduced from 3 to save time
     retry_delay = 1  # Reduced from 2 seconds
     
+    print(f"[AI] Starting get_ai_response, max_retries: {max_retries}")
+    
     for attempt in range(max_retries):
         try:
+            print(f"[AI] Attempt {attempt + 1}/{max_retries}")
+            attempt_start = time.time()
+            
             # Get available model (with caching)
+            print(f"[AI] Getting available model...")
             model_name = get_available_model()
             if not model_name:
-                print("No available Gemini model found")
+                print("[AI] ERROR: No available Gemini model found")
                 return None
             
+            print(f"[AI] Using model: {model_name}")
             model = genai.GenerativeModel(model_name)
             
             # Generate content
+            print(f"[AI] Calling generate_content...")
+            gen_start = time.time()
             response = model.generate_content(message)
+            gen_time = time.time() - gen_start
+            print(f"[AI] generate_content took {gen_time:.2f}s")
             
             # Handle different response formats
+            print(f"[AI] Processing response...")
             if hasattr(response, 'text') and response.text:
-                return response.text.strip()
+                result = response.text.strip()
+                print(f"[AI] ✅ Got response via .text (length: {len(result)})")
+                return result
             elif hasattr(response, 'candidates') and response.candidates:
                 if len(response.candidates) > 0:
                     candidate = response.candidates[0]
                     if hasattr(candidate, 'content') and candidate.content:
                         if hasattr(candidate.content, 'parts') and candidate.content.parts:
-                            return candidate.content.parts[0].text.strip()
+                            result = candidate.content.parts[0].text.strip()
+                            print(f"[AI] ✅ Got response via candidates (length: {len(result)})")
+                            return result
             
-            print("Warning: Empty response from Gemini")
+            print("[AI] ⚠️ WARNING: Empty response from Gemini")
+            print(f"[AI] Response attributes: {dir(response)}")
             return None
             
         except Exception as e:
@@ -220,14 +237,17 @@ def get_ai_response(message):
                 'Resource exhausted' in error_msg
             )
             
+            attempt_time = time.time() - attempt_start
+            print(f"[AI] Attempt {attempt + 1} failed after {attempt_time:.2f}s")
+            
             if is_rate_limit and attempt < max_retries - 1:
                 # Wait before retrying
                 wait_time = retry_delay * (attempt + 1)
-                print(f"Rate limit hit, waiting {wait_time}s before retry {attempt + 1}/{max_retries}")
+                print(f"[AI] ⏳ Rate limit hit, waiting {wait_time}s before retry {attempt + 1}/{max_retries}")
                 time.sleep(wait_time)
                 continue
             
-            print(f"Error getting AI response (attempt {attempt + 1}/{max_retries}): {error_msg}")
+            print(f"[AI] ❌ Error (attempt {attempt + 1}/{max_retries}): {error_type}: {error_msg}")
             
             # Reset model cache if it fails
             global AVAILABLE_MODEL
@@ -249,13 +269,31 @@ def get_ai_response(message):
 
 @app.route('/api/chat', methods=['POST'])
 def chat():
+    import time
+    start_time = time.time()
+    request_id = f"{int(time.time() * 1000)}"
+    
     try:
+        print(f"\n{'='*60}")
+        print(f"[{request_id}] NEW CHAT REQUEST")
+        print(f"{'='*60}")
+        
         data = request.get_json()
+        print(f"[{request_id}] Request data received: {bool(data)}")
+        
+        if not data:
+            print(f"[{request_id}] ERROR: No JSON data in request")
+            return jsonify({'error': 'No data provided', 'request_id': request_id}), 400
+        
         message = data.get('message', '').strip()
-        reply_lang = data.get('reply_lang', 'ti')  # Language for AI reply
+        reply_lang = data.get('reply_lang', 'ti')
+        
+        print(f"[{request_id}] Message: {message[:50]}... (length: {len(message)})")
+        print(f"[{request_id}] Reply language: {reply_lang}")
         
         if not message:
-            return jsonify({'error': 'No message provided'}), 400
+            print(f"[{request_id}] ERROR: Empty message")
+            return jsonify({'error': 'No message provided', 'request_id': request_id}), 400
         
         # Get language names for display
         lang_names = {
@@ -268,20 +306,26 @@ def chat():
         reply_name = lang_names.get(reply_lang, reply_lang)
         
         # Step 1: Detect if input is Tigrinya
+        print(f"[{request_id}] Step 1: Detecting language...")
         detected_lang = detect_language(message)
         is_tigrinya_input = (detected_lang == 'ti')
+        print(f"[{request_id}] Detected language: {detected_lang}, Is Tigrinya: {is_tigrinya_input}")
         
         # Step 2: If input is Tigrinya, ALWAYS translate to English first using Google Translate
         ai_input = message
         if is_tigrinya_input:
+            print(f"[{request_id}] Step 2: Translating Tigrinya to English...")
+            translation_start = time.time()
             # Translate Tigrinya input to English for AI
             english_input = get_translation(message, 'ti', 'en')
+            translation_time = time.time() - translation_start
+            print(f"[{request_id}] Translation took {translation_time:.2f}s")
             if english_input:
                 ai_input = english_input
-                print(f"Translated Tigrinya input to English: {english_input}")
+                print(f"[{request_id}] Translated: {english_input[:50]}...")
             else:
                 # If translation fails, try with original message
-                print("Warning: Failed to translate Tigrinya input, using original")
+                print(f"[{request_id}] WARNING: Translation failed, using original")
         
         # Step 3: Get AI response (always in English)
         # Ask AI to format response nicely
@@ -293,16 +337,26 @@ def chat():
 
 Question: {ai_input}"""
         
-        print(f"Calling AI with prompt (length: {len(enhanced_prompt)})")
+        print(f"[{request_id}] Step 3: Calling AI (prompt length: {len(enhanced_prompt)})...")
+        ai_start = time.time()
         try:
             ai_response = get_ai_response(enhanced_prompt)
+            ai_time = time.time() - ai_start
+            print(f"[{request_id}] AI call took {ai_time:.2f}s")
         except Exception as e:
-            print(f"Exception in get_ai_response: {e}")
+            ai_time = time.time() - ai_start
+            print(f"[{request_id}] EXCEPTION in get_ai_response after {ai_time:.2f}s: {type(e).__name__}: {e}")
             import traceback
             traceback.print_exc()
             ai_response = None
         
-        print(f"AI response received: {ai_response is not None}")
+        print(f"[{request_id}] AI response received: {ai_response is not None}")
+        if ai_response:
+            print(f"[{request_id}] AI response length: {len(ai_response)} chars")
+            print(f"[{request_id}] AI response preview: {ai_response[:100]}...")
+        else:
+            print(f"[{request_id}] ERROR: No AI response received")
+        
         if not ai_response:
             # Provide a helpful error message based on what might have happened
             # Check if it's likely a rate limit issue
@@ -325,22 +379,34 @@ Question: {ai_input}"""
         # Use try/except to handle translation timeouts gracefully
         final_response = ai_response
         if reply_lang != 'en':
+            print(f"[{request_id}] Step 4: Translating to {reply_lang}...")
+            translation_start = time.time()
             try:
                 # Always translate using Google Translate (especially important for Tigrinya)
                 translated_response = get_translation(ai_response, 'en', reply_lang)
+                translation_time = time.time() - translation_start
+                print(f"[{request_id}] Translation took {translation_time:.2f}s")
                 if translated_response:
                     final_response = translated_response
-                    print(f"Translated AI response from English to {reply_lang}")
+                    print(f"[{request_id}] Successfully translated to {reply_lang}")
                 else:
                     # If translation fails, return English response
-                    print(f"Warning: Failed to translate to {reply_lang}, returning English")
+                    print(f"[{request_id}] WARNING: Translation returned None, using English")
             except Exception as e:
+                translation_time = time.time() - translation_start
                 # If translation times out or fails, return English response
-                print(f"Translation error (returning English): {e}")
+                print(f"[{request_id}] Translation ERROR after {translation_time:.2f}s: {type(e).__name__}: {e}")
                 final_response = ai_response
+        else:
+            print(f"[{request_id}] Step 4: Skipping translation (reply_lang is 'en')")
         
         # Format response for display
         response_text = final_response
+        total_time = time.time() - start_time
+        
+        print(f"[{request_id}] ✅ SUCCESS - Total time: {total_time:.2f}s")
+        print(f"[{request_id}] Response length: {len(response_text)} chars")
+        print(f"{'='*60}\n")
         
         return jsonify({
             'success': True,
@@ -348,14 +414,29 @@ Question: {ai_input}"""
             'ai_response': ai_response,  # Keep original English AI response for reference
             'translated_response': final_response,
             'reply_lang': reply_lang,
-            'detected_input_lang': detected_lang
+            'detected_input_lang': detected_lang,
+            'request_id': request_id,
+            'processing_time': round(total_time, 2)
         })
     
     except Exception as e:
-        print(f"Error in chat endpoint: {e}")
+        total_time = time.time() - start_time
+        error_type = type(e).__name__
+        error_msg = str(e)
+        
+        print(f"[{request_id}] ❌ EXCEPTION after {total_time:.2f}s")
+        print(f"[{request_id}] Error type: {error_type}")
+        print(f"[{request_id}] Error message: {error_msg}")
         import traceback
+        print(f"[{request_id}] Traceback:")
         traceback.print_exc()
-        return jsonify({'error': str(e)}), 500
+        print(f"{'='*60}\n")
+        
+        return jsonify({
+            'error': f'{error_type}: {error_msg}',
+            'request_id': request_id,
+            'processing_time': round(total_time, 2)
+        }), 500
 
 # For Vercel deployment, the app will be served via serverless functions
 # For local development, run this directly

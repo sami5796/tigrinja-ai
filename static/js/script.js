@@ -184,6 +184,12 @@ sendBtn.addEventListener('click', async () => {
     showThinking();
     
     try {
+        console.log('🚀 Sending chat request:', {
+            message: message.substring(0, 50) + '...',
+            replyLang: replyLang.value,
+            timestamp: new Date().toISOString()
+        });
+        
         const response = await fetch('/api/chat', {
             method: 'POST',
             headers: {
@@ -195,23 +201,46 @@ sendBtn.addEventListener('click', async () => {
             })
         });
         
+        console.log('📥 Response received:', {
+            status: response.status,
+            statusText: response.statusText,
+            headers: Object.fromEntries(response.headers.entries()),
+            timestamp: new Date().toISOString()
+        });
+        
         const data = await response.json();
+        console.log('📦 Response data:', {
+            success: data.success,
+            hasResponse: !!data.response,
+            hasError: !!data.error,
+            error: data.error,
+            responsePreview: data.response ? data.response.substring(0, 100) + '...' : null
+        });
+        
         hideThinking();
         
         if (data.success) {
             // Display the AI response (already translated to reply language)
             if (data.response) {
+                console.log('✅ Successfully received AI response');
                 addMessage(data.response, false);
             } else {
+                console.warn('⚠️ Success but no response content');
                 addMessage(getTranslation('error-processing'), false);
             }
         } else {
+            console.error('❌ Request failed:', data.error);
             addMessage(data.error || getTranslation('error-processing'), false);
         }
     } catch (error) {
         hideThinking();
+        console.error('💥 Fetch error:', {
+            name: error.name,
+            message: error.message,
+            stack: error.stack,
+            timestamp: new Date().toISOString()
+        });
         addMessage(getTranslation('error-connection'), false);
-        console.error('Error:', error);
     }
 });
 
