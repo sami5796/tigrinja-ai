@@ -8,8 +8,8 @@ from utils import detect_language, get_translation, get_ai_response
 
 def handler(req):
     """Vercel serverless function for chat endpoint"""
-    # Handle CORS
-    headers = {
+    # Handle CORS headers
+    cors_headers = {
         'Content-Type': 'application/json',
         'Access-Control-Allow-Origin': '*',
         'Access-Control-Allow-Methods': 'POST, OPTIONS',
@@ -20,20 +20,22 @@ def handler(req):
     if req.method == 'OPTIONS':
         return {
             'statusCode': 200,
-            'headers': headers,
+            'headers': cors_headers,
             'body': ''
         }
     
     try:
-        # Parse request body
+        # Parse request body - Vercel Python functions receive body as string
         if hasattr(req, 'json') and req.json:
             data = req.json
-        else:
-            body = getattr(req, 'body', '{}')
+        elif hasattr(req, 'body'):
+            body = req.body
             if isinstance(body, str):
                 data = json.loads(body) if body else {}
             else:
                 data = body if body else {}
+        else:
+            data = {}
         
         message = data.get('message', '').strip()
         reply_lang = data.get('reply_lang', 'ti')  # Language for AI reply

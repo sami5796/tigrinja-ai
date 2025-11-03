@@ -6,6 +6,12 @@
     "api/translate.py": {
       "maxDuration": 30
     }
-  }
+  },
+  "rewrites": [
+    {
+      "source": "/",
+      "destination": "/index.html"
+    }
+  ]
 }
 
