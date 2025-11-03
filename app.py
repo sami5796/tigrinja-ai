@@ -18,27 +18,37 @@ app = Flask(
 
 # Configure Gemini AI - use environment variable for cloud deployment
 # IMPORTANT: This runs at import time - adds to cold start time
+# But we wrap it in try/except to prevent crashes
 import time as time_module
-_init_start = time_module.time()
-
-GEMINI_API_KEY = os.environ.get('GEMINI_API_KEY', 'AIzaSyDxxKQoHOqeE9e2EKZ4O4Qtm70HnFfH5hw')
-
-# Validate API key exists
-if not GEMINI_API_KEY or GEMINI_API_KEY.strip() == '':
-    print("ERROR: GEMINI_API_KEY environment variable is not set!")
-else:
-    print(f"[INIT] Gemini API key configured (length: {len(GEMINI_API_KEY)})")
 
 try:
-    _genai_start = time_module.time()
-    genai.configure(api_key=GEMINI_API_KEY)
-    _genai_time = time_module.time() - _genai_start
-    print(f"[INIT] Gemini API configured successfully ({_genai_time:.2f}s)")
+    _init_start = time_module.time()
+    
+    GEMINI_API_KEY = os.environ.get('GEMINI_API_KEY', 'AIzaSyDxxKQoHOqeE9e2EKZ4O4Qtm70HnFfH5hw')
+    
+    # Validate API key exists
+    if not GEMINI_API_KEY or GEMINI_API_KEY.strip() == '':
+        print("WARNING: GEMINI_API_KEY environment variable is not set!")
+    else:
+        print(f"[INIT] Gemini API key configured (length: {len(GEMINI_API_KEY)})")
+    
+    try:
+        _genai_start = time_module.time()
+        genai.configure(api_key=GEMINI_API_KEY)
+        _genai_time = time_module.time() - _genai_start
+        print(f"[INIT] Gemini API configured successfully ({_genai_time:.2f}s)")
+    except Exception as e:
+        print(f"[INIT] WARNING: Error configuring Gemini API: {e}")
+        print(f"[INIT] App will continue but AI features may not work")
+    
+    _init_time = time_module.time() - _init_start
+    print(f"[INIT] Total app.py initialization took {_init_time:.2f}s")
 except Exception as e:
-    print(f"[INIT] ERROR configuring Gemini API: {e}")
-
-_init_time = time_module.time() - _init_start
-print(f"[INIT] Total app.py initialization took {_init_time:.2f}s")
+    print(f"[INIT] CRITICAL: Error during app initialization: {e}")
+    import traceback
+    traceback.print_exc()
+    # Don't crash - let Flask app initialize anyway
+    GEMINI_API_KEY = None
 
 # Cache available model name
 AVAILABLE_MODEL = None
