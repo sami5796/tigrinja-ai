@@ -59,39 +59,6 @@ def get_available_model():
     model_time = time_module.time() - model_start
     print(f"[MODEL] Selected model: {AVAILABLE_MODEL} (took {model_time:.3f}s)")
     return AVAILABLE_MODEL
-    
-    # OLD CODE - too slow, tries multiple models
-    # fastest_models = [
-    #     'models/gemini-2.0-flash-exp',
-    #     'models/gemini-2.0-flash',
-    #     'models/gemini-flash-latest',
-    #     'models/gemini-1.5-flash'
-    # ]
-    
-    # If we get here, try listing models as last resort (but this is slow)
-    try:
-        print("[MODEL] Fast models not available, listing all models...")
-        models = genai.list_models()
-        for model in models:
-            if 'generateContent' in model.supported_generation_methods:
-                if 'flash' in model.name.lower():  # Prefer flash models
-                    AVAILABLE_MODEL = model.name
-                    print(f"[MODEL] Using flash model: {model.name}")
-                    return model.name
-        # Last resort
-        for model in models:
-            if 'generateContent' in model.supported_generation_methods:
-                AVAILABLE_MODEL = model.name
-                print(f"[MODEL] Using available model: {model.name}")
-                return model.name
-    except Exception as e:
-        print(f"[MODEL] Error listing models: {e}")
-    
-    # Ultimate fallback
-    fallback = 'models/gemini-2.0-flash'
-    AVAILABLE_MODEL = fallback
-    print(f"[MODEL] Using hardcoded fallback: {fallback}")
-    return fallback
 
 def detect_language(text):
     """Detect if text is in Tigrinya (Ge'ez script)"""
