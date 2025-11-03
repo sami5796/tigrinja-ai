@@ -3,13 +3,17 @@ import sys
 import os
 
 # Add parent directory to path for imports
-sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+sys.path.insert(0, BASE_DIR)
 
 def handler(req):
-    """Handle root route - serve HTML (Vercel Python format)"""
+    """Handle root route - serve HTML (Vercel Python format)
+    
+    Returns dictionary with statusCode, headers, and body
+    """
     try:
         # Read HTML file
-        html_path = os.path.join(os.path.dirname(os.path.dirname(__file__)), 'templates', 'index.html')
+        html_path = os.path.join(BASE_DIR, 'templates', 'index.html')
         with open(html_path, 'r', encoding='utf-8') as f:
             html_content = f.read()
         

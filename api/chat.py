@@ -5,39 +5,55 @@ import json
 import time
 
 # Add parent directory to path for imports
-sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+sys.path.insert(0, BASE_DIR)
 
-from lib.helpers import detect_language, get_translation, get_ai_response
+try:
+    from lib.helpers import detect_language, get_translation, get_ai_response
+except ImportError as e:
+    print(f"ERROR importing helpers: {e}")
+    print(f"BASE_DIR: {BASE_DIR}")
+    print(f"sys.path: {sys.path}")
+    raise
 
 def handler(req):
     """Handle /api/chat POST requests (Vercel Python format)
     
-    Vercel passes a request object with:
-    - req.method: HTTP method
-    - req.body: Request body (string or bytes)
+    Returns dictionary with statusCode, headers, and body
     """
     start_time = time.time()
     request_id = f"{int(time.time() * 1000)}"
     
     try:
-        # Get method and body from Vercel request object
-        method = getattr(req, 'method', 'POST')
-        
-        # Get body - Vercel passes it as attribute
+        # Vercel Python passes request as object with .body attribute
+        # Try to get body - handle different formats
         body_raw = getattr(req, 'body', '')
-        if isinstance(body_raw, str):
-            body = body_raw
-        elif isinstance(body_raw, bytes):
-            body = body_raw.decode('utf-8')
-        else:
-            body = str(body_raw) if body_raw else ''
         
-        # Parse JSON body
-        try:
-            data = json.loads(body) if body else {}
-        except Exception as e:
-            print(f"[{request_id}] Error parsing JSON: {e}")
-            data = {}
+        # If body is empty, try reading from request
+        if not body_raw:
+            # Try to get from json() method
+            if hasattr(req, 'json') and callable(req.json):
+                try:
+                    data = req.json()
+                except:
+                    data = {}
+            else:
+                data = {}
+        else:
+            # Parse from body string
+            if isinstance(body_raw, str):
+                body = body_raw
+            elif isinstance(body_raw, bytes):
+                body = body_raw.decode('utf-8')
+            else:
+                body = str(body_raw) if body_raw else ''
+            
+            # Parse JSON body
+            try:
+                data = json.loads(body) if body else {}
+            except Exception as e:
+                print(f"[{request_id}] Error parsing JSON: {e}")
+                data = {}
         
         print(f"\n{'='*60}")
         print(f"[{request_id}] NEW CHAT REQUEST")
