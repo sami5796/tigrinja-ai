@@ -203,6 +203,8 @@ def get_ai_response(message):
             # Generate content WITH TIMEOUT using ThreadPoolExecutor
             print(f"[AI] Calling generate_content with {MAX_AI_TIME}s timeout...")
             gen_start = time.time()
+            response = None
+            gen_time = 0
             
             def call_gemini():
                 return model.generate_content(message, generation_config=generation_config)
@@ -223,7 +225,13 @@ def get_ai_response(message):
             except Exception as e:
                 gen_time = time.time() - gen_start
                 print(f"[AI] Exception after {gen_time:.2f}s: {type(e).__name__}: {e}")
-                raise
+                import traceback
+                traceback.print_exc()
+                return None
+            
+            if not response:
+                print(f"[AI] No response after {gen_time:.2f}s")
+                return None
             
             if gen_time > 6:
                 print(f"[AI] ⚠️ WARNING: API call took {gen_time:.2f}s - slow but completed!")
