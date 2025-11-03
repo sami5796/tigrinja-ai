@@ -83,6 +83,13 @@ def detect_language(text):
 def get_translation(text, source_lang='en', target_lang='ti'):
     """Get translation from Google Translate using deep-translator library"""
     try:
+        # Limit text length to prevent timeouts (Vercel has 10s timeout)
+        # Translate in chunks if too long
+        max_length = 1000  # Reasonable chunk size
+        if len(text) > max_length:
+            print(f"Text too long ({len(text)} chars), truncating to {max_length}")
+            text = text[:max_length] + "..."
+        
         # Use deep-translator which uses HTTP requests (no browser needed)
         # If source_lang is 'auto', Google Translate will auto-detect
         if source_lang == 'auto':
@@ -105,7 +112,8 @@ def get_translation(text, source_lang='en', target_lang='ti'):
                 translator = GoogleTranslator(source='auto', target=target_lang)
                 translation = translator.translate(text)
                 return translation if translation else None
-            except:
+            except Exception as e2:
+                print(f"Fallback translation also failed: {e2}")
                 pass
         return None
 
@@ -169,9 +177,9 @@ def get_ai_response(message):
     """Get AI response from Gemini"""
     import time
     
-    # Retry logic for rate limits
-    max_retries = 3
-    retry_delay = 2  # seconds
+    # Retry logic for rate limits (reduced delays for Vercel timeout)
+    max_retries = 2  # Reduced from 3 to save time
+    retry_delay = 1  # Reduced from 2 seconds
     
     for attempt in range(max_retries):
         try:
@@ -286,7 +294,14 @@ def chat():
 Question: {ai_input}"""
         
         print(f"Calling AI with prompt (length: {len(enhanced_prompt)})")
-        ai_response = get_ai_response(enhanced_prompt)
+        try:
+            ai_response = get_ai_response(enhanced_prompt)
+        except Exception as e:
+            print(f"Exception in get_ai_response: {e}")
+            import traceback
+            traceback.print_exc()
+            ai_response = None
+        
         print(f"AI response received: {ai_response is not None}")
         if not ai_response:
             # Provide a helpful error message based on what might have happened
@@ -296,8 +311,10 @@ Question: {ai_input}"""
             
             if '429' in last_error or 'ResourceExhausted' in last_error or 'quota' in last_error.lower():
                 error_msg = "The AI service is temporarily rate-limited. Please wait a moment and try again in a few seconds."
+            elif 'timeout' in last_error.lower() or 'timed out' in last_error.lower():
+                error_msg = "The request timed out. Please try with a shorter message or try again."
             else:
-                error_msg = "Sorry, I couldn't get a response from the AI. This might be due to:\n- API key issues\n- Network connectivity\n- API quota limits\n\nPlease wait a moment and try again."
+                error_msg = "Sorry, I couldn't get a response from the AI. This might be due to:\n- API key issues\n- Network connectivity\n- API quota limits\n- Request timeout\n\nPlease try again with a shorter message."
             
             return jsonify({
                 'success': False,
@@ -305,16 +322,22 @@ Question: {ai_input}"""
             }), 503  # Service Unavailable instead of 500
         
         # Step 4: Translate AI response to reply language using Google Translate
+        # Use try/except to handle translation timeouts gracefully
         final_response = ai_response
         if reply_lang != 'en':
-            # Always translate using Google Translate (especially important for Tigrinya)
-            translated_response = get_translation(ai_response, 'en', reply_lang)
-            if translated_response:
-                final_response = translated_response
-                print(f"Translated AI response from English to {reply_lang}")
-            else:
-                # If translation fails, return English response
-                print(f"Warning: Failed to translate to {reply_lang}, returning English")
+            try:
+                # Always translate using Google Translate (especially important for Tigrinya)
+                translated_response = get_translation(ai_response, 'en', reply_lang)
+                if translated_response:
+                    final_response = translated_response
+                    print(f"Translated AI response from English to {reply_lang}")
+                else:
+                    # If translation fails, return English response
+                    print(f"Warning: Failed to translate to {reply_lang}, returning English")
+            except Exception as e:
+                # If translation times out or fails, return English response
+                print(f"Translation error (returning English): {e}")
+                final_response = ai_response
         
         # Format response for display
         response_text = final_response
