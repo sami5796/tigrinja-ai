@@ -43,7 +43,7 @@ def handler(req):
         if not message:
             return {
                 'statusCode': 400,
-                'headers': headers,
+                'headers': cors_headers,
                 'body': json.dumps({'success': False, 'error': 'No message provided'})
             }
         
@@ -96,7 +96,7 @@ Question: {ai_input}"""
             
             return {
                 'statusCode': 503,
-                'headers': headers,
+                'headers': cors_headers,
                 'body': json.dumps({
                     'success': False,
                     'error': error_msg
@@ -120,7 +120,7 @@ Question: {ai_input}"""
         
         return {
             'statusCode': 200,
-            'headers': headers,
+            'headers': cors_headers,
             'body': json.dumps({
                 'success': True,
                 'response': response_text,
@@ -137,7 +137,7 @@ Question: {ai_input}"""
         traceback.print_exc()
         return {
             'statusCode': 500,
-            'headers': headers,
+            'headers': cors_headers,
             'body': json.dumps({'success': False, 'error': str(e)})
         }
 

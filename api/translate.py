@@ -44,7 +44,7 @@ def handler(req):
         if not text:
             return {
                 'statusCode': 400,
-                'headers': headers,
+                'headers': cors_headers,
                 'body': json.dumps({'success': False, 'error': 'No text provided'})
             }
         
@@ -62,7 +62,7 @@ def handler(req):
         if translation:
             return {
                 'statusCode': 200,
-                'headers': headers,
+                'headers': cors_headers,
                 'body': json.dumps({
                     'success': True,
                     'translation': translation,
@@ -75,7 +75,7 @@ def handler(req):
         else:
             return {
                 'statusCode': 200,
-                'headers': headers,
+                'headers': cors_headers,
                 'body': json.dumps({
                     'success': True,
                     'translation': None,
