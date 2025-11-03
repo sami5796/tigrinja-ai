@@ -195,7 +195,10 @@ def get_ai_response(message):
     
     try:
         # Use REST API directly - faster than SDK
-        url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key={GEMINI_API_KEY}"
+        # Try v1 instead of v1beta, or use gemini-pro if flash doesn't work
+        # Also try different model names
+        model_name = "gemini-1.5-flash"  # Try this first
+        url = f"https://generativelanguage.googleapis.com/v1beta/models/{model_name}:generateContent?key={GEMINI_API_KEY}"
         
         payload = {
             "contents": [{
@@ -238,7 +241,33 @@ def get_ai_response(message):
                 print("[AI] ⚠️ WARNING: Empty response from Gemini REST API")
                 return None
             else:
-                print(f"[AI] ERROR: REST API returned status {response.status_code}: {response.text[:200]}")
+                error_text = response.text[:200]
+                print(f"[AI] ERROR: REST API returned status {response.status_code}: {error_text}")
+                
+                # If 404, try with gemini-pro model as fallback
+                if response.status_code == 404 and "gemini-1.5-flash" in url:
+                    print(f"[AI] Trying fallback model: gemini-pro")
+                    fallback_url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-pro:generateContent?key={GEMINI_API_KEY}"
+                    try:
+                        fallback_response = requests.post(
+                            fallback_url,
+                            json=payload,
+                            timeout=MAX_AI_TIME,
+                            headers={'Content-Type': 'application/json'}
+                        )
+                        if fallback_response.status_code == 200:
+                            result = fallback_response.json()
+                            if 'candidates' in result and len(result['candidates']) > 0:
+                                candidate = result['candidates'][0]
+                                if 'content' in candidate and 'parts' in candidate['content']:
+                                    if len(candidate['content']['parts']) > 0:
+                                        text = candidate['content']['parts'][0].get('text', '').strip()
+                                        if text:
+                                            print(f"[AI] ✅ Got response via fallback model (length: {len(text)})")
+                                            return text
+                    except Exception as e:
+                        print(f"[AI] Fallback model also failed: {e}")
+                
                 return None
                 
         except requests.exceptions.Timeout:
