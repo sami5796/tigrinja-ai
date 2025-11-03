@@ -4,7 +4,17 @@ import os
 from deep_translator import GoogleTranslator
 import google.generativeai as genai
 
-app = Flask(__name__)
+# Get the directory where this file is located
+BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+
+# Create Flask app with explicit paths for templates and static files
+# This ensures it works in Vercel's serverless environment
+app = Flask(
+    __name__,
+    template_folder=os.path.join(BASE_DIR, 'templates'),
+    static_folder=os.path.join(BASE_DIR, 'static'),
+    static_url_path='/static'
+)
 
 # Configure Gemini AI - use environment variable for cloud deployment
 GEMINI_API_KEY = os.environ.get('GEMINI_API_KEY', 'AIzaSyDxxKQoHOqeE9e2EKZ4O4Qtm70HnFfH5hw')
