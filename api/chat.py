@@ -25,20 +25,22 @@ def handler(req):
         }
     
     try:
-        # Parse request body - Vercel Python functions receive body as string
+        # Parse request body
         if hasattr(req, 'json') and req.json:
             data = req.json
         elif hasattr(req, 'body'):
             body = req.body
             if isinstance(body, str):
                 data = json.loads(body) if body else {}
+            elif isinstance(body, bytes):
+                data = json.loads(body.decode('utf-8')) if body else {}
             else:
                 data = body if body else {}
         else:
             data = {}
         
         message = data.get('message', '').strip()
-        reply_lang = data.get('reply_lang', 'ti')  # Language for AI reply
+        reply_lang = data.get('reply_lang', 'ti')
         
         if not message:
             return {
@@ -61,20 +63,17 @@ def handler(req):
         detected_lang = detect_language(message)
         is_tigrinya_input = (detected_lang == 'ti')
         
-        # Step 2: If input is Tigrinya, ALWAYS translate to English first using Google Translate
+        # Step 2: If input is Tigrinya, ALWAYS translate to English first
         ai_input = message
         if is_tigrinya_input:
-            # Translate Tigrinya input to English for AI
             english_input = get_translation(message, 'ti', 'en')
             if english_input:
                 ai_input = english_input
                 print(f"Translated Tigrinya input to English: {english_input}")
             else:
-                # If translation fails, try with original message
                 print("Warning: Failed to translate Tigrinya input, using original")
         
-        # Step 3: Get AI response (always in English)
-        # Ask AI to format response nicely
+        # Step 3: Get AI response
         enhanced_prompt = f"""Please provide a well-organized and clear response to the following question. Use proper formatting with:
 - Clear headings for main topics (marked with **)
 - Bullet points for lists
@@ -85,7 +84,6 @@ Question: {ai_input}"""
         
         ai_response = get_ai_response(enhanced_prompt)
         if not ai_response:
-            # Provide a helpful error message based on what might have happened
             import traceback
             last_error = traceback.format_exc() if hasattr(traceback, 'format_exc') else ''
             
@@ -103,28 +101,23 @@ Question: {ai_input}"""
                 })
             }
         
-        # Step 4: Translate AI response to reply language using Google Translate
+        # Step 4: Translate AI response to reply language
         final_response = ai_response
         if reply_lang != 'en':
-            # Always translate using Google Translate (especially important for Tigrinya)
             translated_response = get_translation(ai_response, 'en', reply_lang)
             if translated_response:
                 final_response = translated_response
                 print(f"Translated AI response from English to {reply_lang}")
             else:
-                # If translation fails, return English response
                 print(f"Warning: Failed to translate to {reply_lang}, returning English")
-        
-        # Format response for display
-        response_text = final_response
         
         return {
             'statusCode': 200,
             'headers': cors_headers,
             'body': json.dumps({
                 'success': True,
-                'response': response_text,
-                'ai_response': ai_response,  # Keep original English AI response for reference
+                'response': final_response,
+                'ai_response': ai_response,
                 'translated_response': final_response,
                 'reply_lang': reply_lang,
                 'detected_input_lang': detected_lang
@@ -140,4 +133,3 @@ Question: {ai_input}"""
             'headers': cors_headers,
             'body': json.dumps({'success': False, 'error': str(e)})
         }
-

@@ -26,13 +26,15 @@ def handler(req):
         }
     
     try:
-        # Parse request body - Vercel Python functions receive body as string
+        # Parse request body
         if hasattr(req, 'json') and req.json:
             data = req.json
         elif hasattr(req, 'body'):
             body = req.body
             if isinstance(body, str):
                 data = json.loads(body) if body else {}
+            elif isinstance(body, bytes):
+                data = json.loads(body.decode('utf-8')) if body else {}
             else:
                 data = body if body else {}
         else:
@@ -52,10 +54,10 @@ def handler(req):
         detected_lang = detect_language(text)
         source_lang = detected_lang if detected_lang != 'auto' else 'auto'
         
-        # Get translation first
+        # Get translation
         translation = get_translation(text, source_lang, reply_lang)
         
-        # Generate Google Translate URL (client will open it)
+        # Generate Google Translate URL
         source_for_url = source_lang if source_lang != 'auto' else 'auto'
         translate_url = f"https://translate.google.no/?sl={source_for_url}&tl={reply_lang}&text={quote(text)}&op=translate"
         
@@ -92,7 +94,6 @@ def handler(req):
         traceback.print_exc()
         return {
             'statusCode': 500,
-            'headers': headers,
+            'headers': cors_headers,
             'body': json.dumps({'success': False, 'error': str(e)})
         }
-
