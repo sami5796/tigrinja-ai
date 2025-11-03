@@ -220,9 +220,6 @@ def get_ai_response(message):
             print(f"[AI] Calling generate_content (max_tokens: 1024)...")
             gen_start = time.time()
             
-            # Add timeout wrapper - if it takes more than 8 seconds, abort
-            import signal
-            
             try:
                 response = model.generate_content(
                     message,
