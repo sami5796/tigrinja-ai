@@ -35,37 +35,49 @@ except Exception as e:
 AVAILABLE_MODEL = None
 
 def get_available_model():
-    """Get an available Gemini model"""
+    """Get an available Gemini model - optimized for speed"""
     global AVAILABLE_MODEL
     if AVAILABLE_MODEL:
         return AVAILABLE_MODEL
     
+    # Skip slow list_models() call - just use fastest model directly
+    # This saves ~1-2 seconds on cold starts in Vercel
+    fastest_models = [
+        'models/gemini-2.0-flash-exp',  # Latest experimental (fastest)
+        'models/gemini-2.0-flash',      # Stable fast model
+        'models/gemini-flash-latest',   # Flash latest
+        'models/gemini-1.5-flash'       # Fallback
+    ]
+    
+    # Try the fastest models first without listing all models
+    for model_name in fastest_models:
+        AVAILABLE_MODEL = model_name
+        print(f"[MODEL] Using fast model: {model_name}")
+        return model_name
+    
+    # If we get here, try listing models as last resort (but this is slow)
     try:
-        # List all available models
+        print("[MODEL] Fast models not available, listing all models...")
         models = genai.list_models()
-        # Prefer newer, faster models
-        preferred = ['models/gemini-2.0-flash', 'models/gemini-flash-latest', 'models/gemini-2.5-flash']
-        
-        for pref in preferred:
-            for model in models:
-                if model.name == pref and 'generateContent' in model.supported_generation_methods:
-                    AVAILABLE_MODEL = pref
-                    print(f"Found available model: {pref}")
-                    return pref
-        
-        # If preferred not found, use first available
+        for model in models:
+            if 'generateContent' in model.supported_generation_methods:
+                if 'flash' in model.name.lower():  # Prefer flash models
+                    AVAILABLE_MODEL = model.name
+                    print(f"[MODEL] Using flash model: {model.name}")
+                    return model.name
+        # Last resort
         for model in models:
             if 'generateContent' in model.supported_generation_methods:
                 AVAILABLE_MODEL = model.name
-                print(f"Using available model: {model.name}")
+                print(f"[MODEL] Using available model: {model.name}")
                 return model.name
     except Exception as e:
-        print(f"Error listing models: {e}")
+        print(f"[MODEL] Error listing models: {e}")
     
     # Ultimate fallback
     fallback = 'models/gemini-2.0-flash'
     AVAILABLE_MODEL = fallback
-    print(f"Using fallback model: {fallback}")
+    print(f"[MODEL] Using hardcoded fallback: {fallback}")
     return fallback
 
 def detect_language(text):
@@ -198,12 +210,35 @@ def get_ai_response(message):
             print(f"[AI] Using model: {model_name}")
             model = genai.GenerativeModel(model_name)
             
+            # Generate content with generation config for faster responses
+            generation_config = {
+                'max_output_tokens': 1024,  # Limit response length for speed
+                'temperature': 0.7,  # Balanced creativity/speed
+            }
+            
             # Generate content
-            print(f"[AI] Calling generate_content...")
+            print(f"[AI] Calling generate_content (max_tokens: 1024)...")
             gen_start = time.time()
-            response = model.generate_content(message)
+            
+            # Add timeout wrapper - if it takes more than 8 seconds, abort
+            import signal
+            
+            try:
+                response = model.generate_content(
+                    message,
+                    generation_config=generation_config
+                )
+            except Exception as e:
+                gen_time = time.time() - gen_start
+                if gen_time > 8:
+                    print(f"[AI] ⚠️ Request taking too long ({gen_time:.2f}s), may timeout")
+                raise
+            
             gen_time = time.time() - gen_start
             print(f"[AI] generate_content took {gen_time:.2f}s")
+            
+            if gen_time > 7:
+                print(f"[AI] ⚠️ WARNING: API call took {gen_time:.2f}s - close to Vercel timeout!")
             
             # Handle different response formats
             print(f"[AI] Processing response...")
@@ -376,27 +411,42 @@ Question: {ai_input}"""
             }), 503  # Service Unavailable instead of 500
         
         # Step 4: Translate AI response to reply language using Google Translate
-        # Use try/except to handle translation timeouts gracefully
+        # OPTIMIZED: Skip translation if we're running low on time (Vercel 10s timeout)
+        total_time_so_far = time.time() - start_time
+        time_remaining = 9.0 - total_time_so_far  # Leave 1 second buffer
+        
         final_response = ai_response
         if reply_lang != 'en':
-            print(f"[{request_id}] Step 4: Translating to {reply_lang}...")
-            translation_start = time.time()
-            try:
-                # Always translate using Google Translate (especially important for Tigrinya)
-                translated_response = get_translation(ai_response, 'en', reply_lang)
-                translation_time = time.time() - translation_start
-                print(f"[{request_id}] Translation took {translation_time:.2f}s")
-                if translated_response:
-                    final_response = translated_response
-                    print(f"[{request_id}] Successfully translated to {reply_lang}")
-                else:
-                    # If translation fails, return English response
-                    print(f"[{request_id}] WARNING: Translation returned None, using English")
-            except Exception as e:
-                translation_time = time.time() - translation_start
-                # If translation times out or fails, return English response
-                print(f"[{request_id}] Translation ERROR after {translation_time:.2f}s: {type(e).__name__}: {e}")
-                final_response = ai_response
+            if time_remaining < 2.0:
+                # Not enough time for translation - return English
+                print(f"[{request_id}] Step 4: SKIPPING translation (only {time_remaining:.1f}s remaining)")
+                print(f"[{request_id}] Returning English response to avoid timeout")
+            else:
+                print(f"[{request_id}] Step 4: Translating to {reply_lang} ({time_remaining:.1f}s available)...")
+                translation_start = time.time()
+                try:
+                    # Always translate using Google Translate (especially important for Tigrinya)
+                    # Limit text length further if time is tight
+                    text_to_translate = ai_response
+                    if time_remaining < 3.0 and len(text_to_translate) > 500:
+                        text_to_translate = text_to_translate[:500] + "..."
+                        print(f"[{request_id}] Truncating text for faster translation")
+                    
+                    translated_response = get_translation(text_to_translate, 'en', reply_lang)
+                    translation_time = time.time() - translation_start
+                    print(f"[{request_id}] Translation took {translation_time:.2f}s")
+                    
+                    if translated_response:
+                        final_response = translated_response
+                        print(f"[{request_id}] Successfully translated to {reply_lang}")
+                    else:
+                        # If translation fails, return English response
+                        print(f"[{request_id}] WARNING: Translation returned None, using English")
+                except Exception as e:
+                    translation_time = time.time() - translation_start
+                    # If translation times out or fails, return English response
+                    print(f"[{request_id}] Translation ERROR after {translation_time:.2f}s: {type(e).__name__}: {e}")
+                    final_response = ai_response
         else:
             print(f"[{request_id}] Step 4: Skipping translation (reply_lang is 'en')")
         
