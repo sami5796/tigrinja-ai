@@ -195,9 +195,14 @@ def get_ai_response(message):
     
     try:
         # Use REST API directly - faster than SDK
-        # Try v1 instead of v1beta, or use gemini-pro if flash doesn't work
-        # Also try different model names
-        model_name = "gemini-1.5-flash"  # Try this first
+        # Try different model names - gemini-pro is most reliable
+        models_to_try = [
+            "gemini-pro",  # Most reliable, try first
+            "gemini-1.5-flash",
+            "gemini-1.5-pro",
+        ]
+        
+        model_name = models_to_try[0]  # Start with gemini-pro
         url = f"https://generativelanguage.googleapis.com/v1beta/models/{model_name}:generateContent?key={GEMINI_API_KEY}"
         
         payload = {
@@ -244,29 +249,35 @@ def get_ai_response(message):
                 error_text = response.text[:200]
                 print(f"[AI] ERROR: REST API returned status {response.status_code}: {error_text}")
                 
-                # If 404, try with gemini-pro model as fallback
-                if response.status_code == 404 and "gemini-1.5-flash" in url:
-                    print(f"[AI] Trying fallback model: gemini-pro")
-                    fallback_url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-pro:generateContent?key={GEMINI_API_KEY}"
-                    try:
-                        fallback_response = requests.post(
-                            fallback_url,
-                            json=payload,
-                            timeout=MAX_AI_TIME,
-                            headers={'Content-Type': 'application/json'}
-                        )
-                        if fallback_response.status_code == 200:
-                            result = fallback_response.json()
-                            if 'candidates' in result and len(result['candidates']) > 0:
-                                candidate = result['candidates'][0]
-                                if 'content' in candidate and 'parts' in candidate['content']:
-                                    if len(candidate['content']['parts']) > 0:
-                                        text = candidate['content']['parts'][0].get('text', '').strip()
-                                        if text:
-                                            print(f"[AI] ✅ Got response via fallback model (length: {len(text)})")
-                                            return text
-                    except Exception as e:
-                        print(f"[AI] Fallback model also failed: {e}")
+                # If 404, try other models as fallback
+                if response.status_code == 404:
+                    for fallback_model in ["gemini-pro", "gemini-1.5-pro", "gemini-1.5-flash"]:
+                        if fallback_model != model_name:
+                            print(f"[AI] Trying fallback model: {fallback_model}")
+                            fallback_url = f"https://generativelanguage.googleapis.com/v1beta/models/{fallback_model}:generateContent?key={GEMINI_API_KEY}"
+                            try:
+                                fallback_response = requests.post(
+                                    fallback_url,
+                                    json=payload,
+                                    timeout=MAX_AI_TIME,
+                                    headers={'Content-Type': 'application/json'}
+                                )
+                                if fallback_response.status_code == 200:
+                                    result = fallback_response.json()
+                                    if 'candidates' in result and len(result['candidates']) > 0:
+                                        candidate = result['candidates'][0]
+                                        if 'content' in candidate and 'parts' in candidate['content']:
+                                            if len(candidate['content']['parts']) > 0:
+                                                text = candidate['content']['parts'][0].get('text', '').strip()
+                                                if text:
+                                                    print(f"[AI] ✅ Got response via fallback model {fallback_model} (length: {len(text)})")
+                                                    return text
+                                elif fallback_response.status_code != 404:
+                                    # If it's not 404, stop trying other models
+                                    break
+                            except Exception as e:
+                                print(f"[AI] Fallback model {fallback_model} also failed: {e}")
+                                continue
                 
                 return None
                 
