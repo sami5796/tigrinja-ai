@@ -1,27 +1,36 @@
-# Vercel serverless function for Flask app
-# This is the entry point for all requests
-
+"""Vercel serverless function for root route - serves HTML"""
 import sys
 import os
-import time
 
-# Track import time for diagnostics
-_import_start = time.time()
-
-# Add parent directory to Python path
+# Add parent directory to path for imports
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-_path_time = time.time() - _import_start
-print(f"[API] Path setup took {_path_time:.3f}s")
+def handler(request):
+    """Handle root route - serve HTML (Vercel Python format)"""
+    try:
+        # Read HTML file
+        html_path = os.path.join(os.path.dirname(os.path.dirname(__file__)), 'templates', 'index.html')
+        with open(html_path, 'r', encoding='utf-8') as f:
+            html_content = f.read()
+        
+        # Replace Flask url_for with static paths
+        html_content = html_content.replace("{{ url_for('static', filename='css/style.css') }}", '/static/css/style.css')
+        html_content = html_content.replace("{{ url_for('static', filename='js/i18n.js') }}", '/static/js/i18n.js')
+        html_content = html_content.replace("{{ url_for('static', filename='js/script.js') }}", '/static/js/script.js')
+        
+        return {
+            'statusCode': 200,
+            'headers': {
+                'Content-Type': 'text/html; charset=utf-8',
+            },
+            'body': html_content
+        }
+    except Exception as e:
+        return {
+            'statusCode': 500,
+            'headers': {'Content-Type': 'text/plain'},
+            'body': f'Error loading page: {str(e)}'
+        }
 
-# Import the Flask app (this will trigger app.py initialization)
-_import_app_start = time.time()
-from app import app
-_import_app_time = time.time() - _import_app_start
-print(f"[API] Flask app import took {_import_app_time:.2f}s")
-
-_total_import = time.time() - _import_start
-print(f"[API] Total api/index.py initialization: {_total_import:.2f}s")
-
-# Export the app - Vercel's @vercel/python runtime will handle it automatically
-__all__ = ['app']
+# Export handler for Vercel
+__all__ = ['handler']
