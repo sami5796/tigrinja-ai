@@ -9,17 +9,22 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from lib.helpers import detect_language, get_translation, get_ai_response
 
-def handler(request):
-    """Handle /api/chat POST requests (Vercel Python format)"""
+def handler(req):
+    """Handle /api/chat POST requests (Vercel Python format)
+    
+    Vercel passes a request object with:
+    - req.method: HTTP method
+    - req.body: Request body (string or bytes)
+    """
     start_time = time.time()
     request_id = f"{int(time.time() * 1000)}"
     
     try:
-        # Get method and body from request
-        method = request.get('method', 'POST')
+        # Get method and body from Vercel request object
+        method = getattr(req, 'method', 'POST')
         
-        # Get body - handle different formats
-        body_raw = request.get('body', '')
+        # Get body - Vercel passes it as attribute
+        body_raw = getattr(req, 'body', '')
         if isinstance(body_raw, str):
             body = body_raw
         elif isinstance(body_raw, bytes):

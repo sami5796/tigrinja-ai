@@ -5,7 +5,7 @@ import os
 # Add parent directory to path for imports
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-def handler(request):
+def handler(req):
     """Handle root route - serve HTML (Vercel Python format)"""
     try:
         # Read HTML file
