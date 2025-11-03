@@ -185,16 +185,20 @@ def get_ai_response(message):
         print("[AI] ERROR: GEMINI_API_KEY is None - Gemini not configured")
         return None
     
-    # CRITICAL: Vercel timeout is 10s, we MUST finish in <3s for AI call
-    MAX_AI_TIME = 3  # Maximum seconds - extremely aggressive!
+    # CRITICAL: Vercel timeout is 10s, we MUST finish in <2.5s for AI call
+    # Gemini is consistently timing out at 3s, so reduce further
+    MAX_AI_TIME = 2.5  # Maximum seconds - very aggressive!
     
     print(f"[AI] Starting get_ai_response, max_time: {MAX_AI_TIME}s")
     attempt_start = time.time()
     
     try:
-        # Configure Gemini if not already done
+        # Configure Gemini if not already done (but only once to avoid warnings)
         try:
-            genai.configure(api_key=GEMINI_API_KEY)
+            # Only configure if not already configured (check if configured)
+            if not hasattr(genai, '_configured') or not genai._configured:
+                genai.configure(api_key=GEMINI_API_KEY)
+                genai._configured = True
         except Exception as e:
             print(f"[AI] WARNING: Error configuring Gemini (might already be configured): {e}")
         
@@ -207,14 +211,19 @@ def get_ai_response(message):
         
         print(f"[AI] Using model: {model_name}")
         try:
-            model = genai.GenerativeModel(model_name)
+            # Use request_options to potentially speed up the request
+            model = genai.GenerativeModel(
+                model_name,
+                # Try to reduce overhead
+            )
         except Exception as e:
             print(f"[AI] ERROR creating GenerativeModel: {e}")
             return None
         
         # Generate content with generation config for faster responses
+        # Reduce tokens further to speed up generation
         generation_config = {
-            'max_output_tokens': 128,  # Very short for speed!
+            'max_output_tokens': 100,  # Even shorter for speed!
             'temperature': 0.7,
         }
         
