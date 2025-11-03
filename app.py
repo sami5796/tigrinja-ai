@@ -1,75 +1,53 @@
 from flask import Flask, render_template, request, jsonify
 from urllib.parse import quote
+import webbrowser
+import threading
 import os
 from deep_translator import GoogleTranslator
 import google.generativeai as genai
-import requests
 
-# Get the directory where this file is located
-BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+app = Flask(__name__)
 
-# Create Flask app with explicit paths for templates and static files
-# This ensures it works in Vercel's serverless environment
-app = Flask(
-    __name__,
-    template_folder=os.path.join(BASE_DIR, 'templates'),
-    static_folder=os.path.join(BASE_DIR, 'static'),
-    static_url_path='/static'
-)
-
-# Configure Gemini AI - use environment variable for cloud deployment
-# IMPORTANT: This runs at import time - adds to cold start time
-# But we wrap it in try/except to prevent crashes
-import time as time_module
-
-try:
-    _init_start = time_module.time()
-    
-    GEMINI_API_KEY = os.environ.get('GEMINI_API_KEY', 'AIzaSyDxxKQoHOqeE9e2EKZ4O4Qtm70HnFfH5hw')
-    
-    # Validate API key exists
-    if not GEMINI_API_KEY or GEMINI_API_KEY.strip() == '':
-        print("WARNING: GEMINI_API_KEY environment variable is not set!")
-    else:
-        print(f"[INIT] Gemini API key configured (length: {len(GEMINI_API_KEY)})")
-    
-    try:
-        _genai_start = time_module.time()
-        genai.configure(api_key=GEMINI_API_KEY)
-        _genai_time = time_module.time() - _genai_start
-        print(f"[INIT] Gemini API configured successfully ({_genai_time:.2f}s)")
-    except Exception as e:
-        print(f"[INIT] WARNING: Error configuring Gemini API: {e}")
-        print(f"[INIT] App will continue but AI features may not work")
-    
-    _init_time = time_module.time() - _init_start
-    print(f"[INIT] Total app.py initialization took {_init_time:.2f}s")
-except Exception as e:
-    print(f"[INIT] CRITICAL: Error during app initialization: {e}")
-    import traceback
-    traceback.print_exc()
-    # Don't crash - let Flask app initialize anyway
-    GEMINI_API_KEY = None
+# Configure Gemini AI - Get API key from environment variable or use default for local development
+GEMINI_API_KEY = os.environ.get('GEMINI_API_KEY', 'AIzaSyDxxKQoHOqeE9e2EKZ4O4Qtm70HnFfH5hw')
+genai.configure(api_key=GEMINI_API_KEY)
 
 # Cache available model name
 AVAILABLE_MODEL = None
 
 def get_available_model():
-    """Get an available Gemini model - optimized for speed"""
+    """Get an available Gemini model"""
     global AVAILABLE_MODEL
-    model_start = time_module.time()
-    
     if AVAILABLE_MODEL:
-        print(f"[MODEL] Using cached model: {AVAILABLE_MODEL}")
         return AVAILABLE_MODEL
     
-    # CRITICAL: Use ONLY the fastest, most reliable model directly
-    # Don't try multiple models - each attempt is slow!
-    # gemini-1.5-flash is the fastest and most reliable
-    AVAILABLE_MODEL = 'models/gemini-1.5-flash'
-    model_time = time_module.time() - model_start
-    print(f"[MODEL] Selected model: {AVAILABLE_MODEL} (took {model_time:.3f}s)")
-    return AVAILABLE_MODEL
+    try:
+        # List all available models
+        models = genai.list_models()
+        # Prefer newer, faster models
+        preferred = ['models/gemini-2.0-flash', 'models/gemini-flash-latest', 'models/gemini-2.5-flash']
+        
+        for pref in preferred:
+            for model in models:
+                if model.name == pref and 'generateContent' in model.supported_generation_methods:
+                    AVAILABLE_MODEL = pref
+                    print(f"Found available model: {pref}")
+                    return pref
+        
+        # If preferred not found, use first available
+        for model in models:
+            if 'generateContent' in model.supported_generation_methods:
+                AVAILABLE_MODEL = model.name
+                print(f"Using available model: {model.name}")
+                return model.name
+    except Exception as e:
+        print(f"Error listing models: {e}")
+    
+    # Ultimate fallback
+    fallback = 'models/gemini-2.0-flash'
+    AVAILABLE_MODEL = fallback
+    print(f"Using fallback model: {fallback}")
+    return fallback
 
 def detect_language(text):
     """Detect if text is in Tigrinya (Ge'ez script)"""
@@ -86,13 +64,6 @@ def detect_language(text):
 def get_translation(text, source_lang='en', target_lang='ti'):
     """Get translation from Google Translate using deep-translator library"""
     try:
-        # Limit text length to prevent timeouts (Vercel has 10s timeout)
-        # Translate in chunks if too long
-        max_length = 1000  # Reasonable chunk size
-        if len(text) > max_length:
-            print(f"Text too long ({len(text)} chars), truncating to {max_length}")
-            text = text[:max_length] + "..."
-        
         # Use deep-translator which uses HTTP requests (no browser needed)
         # If source_lang is 'auto', Google Translate will auto-detect
         if source_lang == 'auto':
@@ -115,19 +86,17 @@ def get_translation(text, source_lang='en', target_lang='ti'):
                 translator = GoogleTranslator(source='auto', target=target_lang)
                 translation = translator.translate(text)
                 return translation if translation else None
-            except Exception as e2:
-                print(f"Fallback translation also failed: {e2}")
+            except:
                 pass
         return None
 
-def get_google_translate_url(text, source_lang='en', target_lang='ti'):
-    """Get Google Translate URL (for client-side opening)"""
+def open_google_translate_browser(text, source_lang='en', target_lang='ti'):
+    """Open Google Translate in default browser with pre-filled text"""
     try:
         translate_url = f"https://translate.google.no/?sl={source_lang}&tl={target_lang}&text={quote(text)}&op=translate"
-        return translate_url
+        webbrowser.open(translate_url)
     except Exception as e:
-        print(f"Error generating translate URL: {e}")
-        return None
+        print(f"Error opening browser: {e}")
 
 @app.route('/')
 def index():
@@ -150,9 +119,14 @@ def translate():
         # Get translation first
         translation = get_translation(text, source_lang, reply_lang)
         
-        # Generate URL for client-side opening (cloud-compatible)
-        source_for_url = source_lang if source_lang != 'auto' else 'auto'
-        translate_url = get_google_translate_url(text, source_for_url, reply_lang)
+        # Open browser in separate thread
+        def open_and_translate():
+            source_for_url = source_lang if source_lang != 'auto' else 'auto'
+            open_google_translate_browser(text, source_for_url, reply_lang)
+        
+        thread = threading.Thread(target=open_and_translate)
+        thread.daemon = True
+        thread.start()
         
         if translation:
             return jsonify({
@@ -160,7 +134,6 @@ def translate():
                 'translation': translation,
                 'original': text,
                 'reply_lang': reply_lang,
-                'translate_url': translate_url,
                 'message': 'Translation completed!'
             })
         else:
@@ -169,7 +142,6 @@ def translate():
                 'translation': None,
                 'original': text,
                 'reply_lang': reply_lang,
-                'translate_url': translate_url,
                 'message': 'Opening Google Translate in browser...'
             })
     
@@ -177,158 +149,88 @@ def translate():
         return jsonify({'error': str(e)}), 500
 
 def get_ai_response(message):
-    """Get AI response from Gemini using REST API directly (faster than SDK)"""
+    """Get AI response from Gemini"""
     import time
-    import requests
-    import json
     
-    # Check if Gemini is configured
-    if GEMINI_API_KEY is None:
-        print("[AI] ERROR: GEMINI_API_KEY is None - Gemini not configured")
-        return None
+    # Retry logic for rate limits
+    max_retries = 3
+    retry_delay = 2  # seconds
     
-    # CRITICAL: Vercel timeout is 10s, we MUST finish in <2s for AI call
-    MAX_AI_TIME = 2.0  # Maximum seconds - very aggressive!
-    
-    print(f"[AI] Starting get_ai_response via REST API, max_time: {MAX_AI_TIME}s")
-    attempt_start = time.time()
-    
-    try:
-        # Use REST API directly - faster than SDK
-        # Try different model names - gemini-pro is most reliable
-        models_to_try = [
-            "gemini-pro",  # Most reliable, try first
-            "gemini-1.5-flash",
-            "gemini-1.5-pro",
-        ]
-        
-        model_name = models_to_try[0]  # Start with gemini-pro
-        url = f"https://generativelanguage.googleapis.com/v1beta/models/{model_name}:generateContent?key={GEMINI_API_KEY}"
-        
-        payload = {
-            "contents": [{
-                "parts": [{
-                    "text": message
-                }]
-            }],
-            "generationConfig": {
-                "maxOutputTokens": 100,  # Short responses
-                "temperature": 0.7
-            }
-        }
-        
-        print(f"[AI] Calling Gemini REST API with {MAX_AI_TIME}s timeout...")
-        gen_start = time.time()
-        
+    for attempt in range(max_retries):
         try:
-            # Use requests with explicit timeout - faster than SDK
-            response = requests.post(
-                url,
-                json=payload,
-                timeout=MAX_AI_TIME,
-                headers={'Content-Type': 'application/json'}
-            )
-            gen_time = time.time() - gen_start
-            print(f"[AI] REST API call completed in {gen_time:.2f}s")
+            # Get available model (with caching)
+            model_name = get_available_model()
+            if not model_name:
+                print("No available Gemini model found")
+                return None
             
-            if response.status_code == 200:
-                result = response.json()
-                # Extract text from response
-                if 'candidates' in result and len(result['candidates']) > 0:
-                    candidate = result['candidates'][0]
-                    if 'content' in candidate and 'parts' in candidate['content']:
-                        if len(candidate['content']['parts']) > 0:
-                            text = candidate['content']['parts'][0].get('text', '').strip()
-                            if text:
-                                print(f"[AI] ✅ Got response via REST API (length: {len(text)})")
-                                return text
-                
-                print("[AI] ⚠️ WARNING: Empty response from Gemini REST API")
-                return None
+            model = genai.GenerativeModel(model_name)
+            
+            # Generate content
+            response = model.generate_content(message)
+            
+            # Handle different response formats
+            if hasattr(response, 'text') and response.text:
+                return response.text.strip()
+            elif hasattr(response, 'candidates') and response.candidates:
+                if len(response.candidates) > 0:
+                    candidate = response.candidates[0]
+                    if hasattr(candidate, 'content') and candidate.content:
+                        if hasattr(candidate.content, 'parts') and candidate.content.parts:
+                            return candidate.content.parts[0].text.strip()
+            
+            print("Warning: Empty response from Gemini")
+            return None
+            
+        except Exception as e:
+            error_msg = str(e)
+            error_type = type(e).__name__
+            
+            # Check if it's a rate limit error
+            is_rate_limit = (
+                'ResourceExhausted' in error_type or 
+                '429' in error_msg or 
+                'quota' in error_msg.lower() or 
+                'rate limit' in error_msg.lower() or
+                'Resource exhausted' in error_msg
+            )
+            
+            if is_rate_limit and attempt < max_retries - 1:
+                # Wait before retrying
+                wait_time = retry_delay * (attempt + 1)
+                print(f"Rate limit hit, waiting {wait_time}s before retry {attempt + 1}/{max_retries}")
+                time.sleep(wait_time)
+                continue
+            
+            print(f"Error getting AI response (attempt {attempt + 1}/{max_retries}): {error_msg}")
+            
+            # Reset model cache if it fails
+            global AVAILABLE_MODEL
+            AVAILABLE_MODEL = None
+            
+            # Provide helpful error messages
+            if 'API key' in error_msg or 'authentication' in error_msg.lower():
+                print("API key authentication error - check your API key")
+            elif is_rate_limit:
+                print("API quota/rate limit exceeded - max retries reached")
             else:
-                error_text = response.text[:200]
-                print(f"[AI] ERROR: REST API returned status {response.status_code}: {error_text}")
-                
-                # If 404, try other models as fallback
-                if response.status_code == 404:
-                    for fallback_model in ["gemini-pro", "gemini-1.5-pro", "gemini-1.5-flash"]:
-                        if fallback_model != model_name:
-                            print(f"[AI] Trying fallback model: {fallback_model}")
-                            fallback_url = f"https://generativelanguage.googleapis.com/v1beta/models/{fallback_model}:generateContent?key={GEMINI_API_KEY}"
-                            try:
-                                fallback_response = requests.post(
-                                    fallback_url,
-                                    json=payload,
-                                    timeout=MAX_AI_TIME,
-                                    headers={'Content-Type': 'application/json'}
-                                )
-                                if fallback_response.status_code == 200:
-                                    result = fallback_response.json()
-                                    if 'candidates' in result and len(result['candidates']) > 0:
-                                        candidate = result['candidates'][0]
-                                        if 'content' in candidate and 'parts' in candidate['content']:
-                                            if len(candidate['content']['parts']) > 0:
-                                                text = candidate['content']['parts'][0].get('text', '').strip()
-                                                if text:
-                                                    print(f"[AI] ✅ Got response via fallback model {fallback_model} (length: {len(text)})")
-                                                    return text
-                                elif fallback_response.status_code != 404:
-                                    # If it's not 404, stop trying other models
-                                    break
-                            except Exception as e:
-                                print(f"[AI] Fallback model {fallback_model} also failed: {e}")
-                                continue
-                
-                return None
-                
-        except requests.exceptions.Timeout:
-            gen_time = time.time() - gen_start
-            print(f"[AI] ❌ TIMEOUT: REST API call exceeded {MAX_AI_TIME}s (took {gen_time:.2f}s)")
+                import traceback
+                traceback.print_exc()
+            
+            # Return None to trigger error message in endpoint
             return None
-        except requests.exceptions.RequestException as e:
-            gen_time = time.time() - gen_start
-            print(f"[AI] Exception after {gen_time:.2f}s: {type(e).__name__}: {e}")
-            return None
-        
-    except Exception as e:
-        error_msg = str(e)
-        error_type = type(e).__name__
-        
-        attempt_time = time.time() - attempt_start
-        print(f"[AI] ❌ Error after {attempt_time:.2f}s: {error_type}: {error_msg}")
-        
-        return None
+    
+    return None
 
 @app.route('/api/chat', methods=['POST'])
 def chat():
-    import time
-    start_time = time.time()
-    request_id = f"{int(time.time() * 1000)}"
-    
-    # CRITICAL: Vercel has 10s timeout - we must finish everything in <9s
-    MAX_TOTAL_TIME = 9.0
-    
     try:
-        print(f"\n{'='*60}")
-        print(f"[{request_id}] NEW CHAT REQUEST")
-        print(f"{'='*60}")
-        
         data = request.get_json()
-        print(f"[{request_id}] Request data received: {bool(data)}")
-        
-        if not data:
-            print(f"[{request_id}] ERROR: No JSON data in request")
-            return jsonify({'error': 'No data provided', 'request_id': request_id}), 400
-        
         message = data.get('message', '').strip()
-        reply_lang = data.get('reply_lang', 'ti')
-        
-        print(f"[{request_id}] Message: {message[:50]}... (length: {len(message)})")
-        print(f"[{request_id}] Reply language: {reply_lang}")
+        reply_lang = data.get('reply_lang', 'ti')  # Language for AI reply
         
         if not message:
-            print(f"[{request_id}] ERROR: Empty message")
-            return jsonify({'error': 'No message provided', 'request_id': request_id}), 400
+            return jsonify({'error': 'No message provided'}), 400
         
         # Get language names for display
         lang_names = {
@@ -341,26 +243,20 @@ def chat():
         reply_name = lang_names.get(reply_lang, reply_lang)
         
         # Step 1: Detect if input is Tigrinya
-        print(f"[{request_id}] Step 1: Detecting language...")
         detected_lang = detect_language(message)
         is_tigrinya_input = (detected_lang == 'ti')
-        print(f"[{request_id}] Detected language: {detected_lang}, Is Tigrinya: {is_tigrinya_input}")
         
         # Step 2: If input is Tigrinya, ALWAYS translate to English first using Google Translate
         ai_input = message
         if is_tigrinya_input:
-            print(f"[{request_id}] Step 2: Translating Tigrinya to English...")
-            translation_start = time.time()
             # Translate Tigrinya input to English for AI
             english_input = get_translation(message, 'ti', 'en')
-            translation_time = time.time() - translation_start
-            print(f"[{request_id}] Translation took {translation_time:.2f}s")
             if english_input:
                 ai_input = english_input
-                print(f"[{request_id}] Translated: {english_input[:50]}...")
+                print(f"Translated Tigrinya input to English: {english_input}")
             else:
                 # If translation fails, try with original message
-                print(f"[{request_id}] WARNING: Translation failed, using original")
+                print("Warning: Failed to translate Tigrinya input, using original")
         
         # Step 3: Get AI response (always in English)
         # Ask AI to format response nicely
@@ -372,32 +268,7 @@ def chat():
 
 Question: {ai_input}"""
         
-        # Check time before AI call
-        time_before_ai = time.time() - start_time
-        if time_before_ai > 5.0:
-            print(f"[{request_id}] ⚠️ Already used {time_before_ai:.2f}s - skipping AI call to avoid timeout")
-            ai_response = "I apologize, but the request is taking too long. Please try again with a shorter message."
-        else:
-            print(f"[{request_id}] Step 3: Calling AI (prompt length: {len(enhanced_prompt)}, time used: {time_before_ai:.2f}s)...")
-            ai_start = time.time()
-            try:
-                ai_response = get_ai_response(enhanced_prompt)
-                ai_time = time.time() - ai_start
-                print(f"[{request_id}] AI call took {ai_time:.2f}s")
-            except Exception as e:
-                ai_time = time.time() - ai_start
-                print(f"[{request_id}] EXCEPTION in get_ai_response after {ai_time:.2f}s: {type(e).__name__}: {e}")
-                import traceback
-                traceback.print_exc()
-                ai_response = None
-        
-        print(f"[{request_id}] AI response received: {ai_response is not None}")
-        if ai_response:
-            print(f"[{request_id}] AI response length: {len(ai_response)} chars")
-            print(f"[{request_id}] AI response preview: {ai_response[:100]}...")
-        else:
-            print(f"[{request_id}] ERROR: No AI response received")
-        
+        ai_response = get_ai_response(enhanced_prompt)
         if not ai_response:
             # Provide a helpful error message based on what might have happened
             # Check if it's likely a rate limit issue
@@ -406,10 +277,8 @@ Question: {ai_input}"""
             
             if '429' in last_error or 'ResourceExhausted' in last_error or 'quota' in last_error.lower():
                 error_msg = "The AI service is temporarily rate-limited. Please wait a moment and try again in a few seconds."
-            elif 'timeout' in last_error.lower() or 'timed out' in last_error.lower():
-                error_msg = "The request timed out. Please try with a shorter message or try again."
             else:
-                error_msg = "Sorry, I couldn't get a response from the AI. This might be due to:\n- API key issues\n- Network connectivity\n- API quota limits\n- Request timeout\n\nPlease try again with a shorter message."
+                error_msg = "Sorry, I couldn't get a response from the AI. This might be due to:\n- API key issues\n- Network connectivity\n- API quota limits\n\nPlease wait a moment and try again."
             
             return jsonify({
                 'success': False,
@@ -417,52 +286,19 @@ Question: {ai_input}"""
             }), 503  # Service Unavailable instead of 500
         
         # Step 4: Translate AI response to reply language using Google Translate
-        # OPTIMIZED: Skip translation if we're running low on time (Vercel 10s timeout)
-        total_time_so_far = time.time() - start_time
-        time_remaining = 9.0 - total_time_so_far  # Leave 1 second buffer
-        
         final_response = ai_response
         if reply_lang != 'en':
-            if time_remaining < 2.0:
-                # Not enough time for translation - return English
-                print(f"[{request_id}] Step 4: SKIPPING translation (only {time_remaining:.1f}s remaining)")
-                print(f"[{request_id}] Returning English response to avoid timeout")
+            # Always translate using Google Translate (especially important for Tigrinya)
+            translated_response = get_translation(ai_response, 'en', reply_lang)
+            if translated_response:
+                final_response = translated_response
+                print(f"Translated AI response from English to {reply_lang}")
             else:
-                print(f"[{request_id}] Step 4: Translating to {reply_lang} ({time_remaining:.1f}s available)...")
-                translation_start = time.time()
-                try:
-                    # Always translate using Google Translate (especially important for Tigrinya)
-                    # Limit text length further if time is tight
-                    text_to_translate = ai_response
-                    if time_remaining < 3.0 and len(text_to_translate) > 500:
-                        text_to_translate = text_to_translate[:500] + "..."
-                        print(f"[{request_id}] Truncating text for faster translation")
-                    
-                    translated_response = get_translation(text_to_translate, 'en', reply_lang)
-                    translation_time = time.time() - translation_start
-                    print(f"[{request_id}] Translation took {translation_time:.2f}s")
-                    
-                    if translated_response:
-                        final_response = translated_response
-                        print(f"[{request_id}] Successfully translated to {reply_lang}")
-                    else:
-                        # If translation fails, return English response
-                        print(f"[{request_id}] WARNING: Translation returned None, using English")
-                except Exception as e:
-                    translation_time = time.time() - translation_start
-                    # If translation times out or fails, return English response
-                    print(f"[{request_id}] Translation ERROR after {translation_time:.2f}s: {type(e).__name__}: {e}")
-                    final_response = ai_response
-        else:
-            print(f"[{request_id}] Step 4: Skipping translation (reply_lang is 'en')")
+                # If translation fails, return English response
+                print(f"Warning: Failed to translate to {reply_lang}, returning English")
         
         # Format response for display
         response_text = final_response
-        total_time = time.time() - start_time
-        
-        print(f"[{request_id}] ✅ SUCCESS - Total time: {total_time:.2f}s")
-        print(f"[{request_id}] Response length: {len(response_text)} chars")
-        print(f"{'='*60}\n")
         
         return jsonify({
             'success': True,
@@ -470,34 +306,19 @@ Question: {ai_input}"""
             'ai_response': ai_response,  # Keep original English AI response for reference
             'translated_response': final_response,
             'reply_lang': reply_lang,
-            'detected_input_lang': detected_lang,
-            'request_id': request_id,
-            'processing_time': round(total_time, 2)
+            'detected_input_lang': detected_lang
         })
     
     except Exception as e:
-        total_time = time.time() - start_time
-        error_type = type(e).__name__
-        error_msg = str(e)
-        
-        print(f"[{request_id}] ❌ EXCEPTION after {total_time:.2f}s")
-        print(f"[{request_id}] Error type: {error_type}")
-        print(f"[{request_id}] Error message: {error_msg}")
+        print(f"Error in chat endpoint: {e}")
         import traceback
-        print(f"[{request_id}] Traceback:")
         traceback.print_exc()
-        print(f"{'='*60}\n")
-        
-        return jsonify({
-            'error': f'{error_type}: {error_msg}',
-            'request_id': request_id,
-            'processing_time': round(total_time, 2)
-        }), 500
+        return jsonify({'error': str(e)}), 500
 
-# For Vercel deployment, the app will be served via serverless functions
-# For local development, run this directly
 if __name__ == '__main__':
+    # Get port from environment variable (for cloud deployment) or use default
     port = int(os.environ.get('PORT', 5001))
-    debug = os.environ.get('FLASK_DEBUG', 'True') == 'True'
-    app.run(debug=debug, host='0.0.0.0', port=port)
+    # Only run in debug mode locally (not in production)
+    debug_mode = os.environ.get('FLASK_ENV') != 'production'
+    app.run(debug=debug_mode, host='0.0.0.0', port=port)
 

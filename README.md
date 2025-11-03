@@ -1,113 +1,175 @@
 # ዝሓስብ ኮምፒተር ብ´ትግርኛ | Tigrinja AI
 
-A modern, user-friendly AI chatbot that provides intelligent responses in Tigrinya, English, Norwegian, Arabic, and Amharic. Built with Flask and featuring a beautiful, glassmorphic UI.
+A modern, user-friendly AI chatbot interface for multilingual communication with Tigrinya support. Built with Flask, Google Gemini AI, and featuring a beautiful, glassmorphic full-screen UI.
 
-## Features
+## ✨ Features
 
-- 🤖 **AI-Powered Chat**: Integrated with Google Gemini for intelligent responses
-- 🌐 **Multilingual Support**: Auto-detects input language and translates responses
-- 🎨 **Modern UI**: Glassmorphic design with neon accents, fully responsive
-- 🔄 **Auto-Translation**: Tigrinya input → English (for AI) → Target language (for display)
-- 📱 **Mobile-Friendly**: Optimized for all screen sizes
+- 🤖 **AI Chatbot** - Powered by Google Gemini AI with intelligent multilingual support
+- 🌐 **Auto Translation** - Automatic translation between Tigrinya, English, Norwegian, Arabic, and Amharic
+- 🎨 **Modern UI** - Full-screen glassmorphic design with subtle neon effects
+- 🌍 **Multilingual UI** - Interface available in Tigrinya, English, and Norwegian
+- 📱 **Fully Responsive** - Optimized for desktop, tablet, and mobile devices
+- ⚡ **Smart Language Detection** - Automatically detects input language
+- 🔄 **Inline Thinking Indicator** - Shows "ይሓስብ..." (thinking...) instead of full-screen loading
 
-## Supported Languages
+## 🚀 Quick Start
 
-- **ትግርኛ** (Tigrinya)
-- **English**
-- **Norsk** (Norwegian)
-- **Arabic**
-- **Amharic**
+### Option 1: Run from GitHub (Recommended)
 
-## Local Development
+1. **Clone the repository:**
+```bash
+git clone https://github.com/yourusername/tigrinja-ai.git
+cd tigrinja-ai
+```
+
+2. **Create a virtual environment:**
+```bash
+python3 -m venv venv
+source venv/bin/activate  # On Windows: venv\Scripts\activate
+```
+
+3. **Install dependencies:**
+```bash
+pip install -r requirements.txt
+```
+
+4. **Set up your Gemini API key (optional for local dev):**
+```bash
+export GEMINI_API_KEY="your-api-key-here"  # On Windows: set GEMINI_API_KEY=your-api-key-here
+```
+
+5. **Run the Flask application:**
+```bash
+python app.py
+```
+
+6. **Open your browser:**
+Navigate to `http://localhost:5001`
+
+### Option 2: Install Locally
 
 1. **Install Python dependencies:**
 ```bash
 pip install -r requirements.txt
 ```
 
-2. **Set environment variable (optional for local dev):**
+2. **Set environment variable (optional):**
 ```bash
 export GEMINI_API_KEY="your-api-key-here"
 ```
 
-3. **Run the Flask application:**
+3. **Run the application:**
 ```bash
 python app.py
 ```
 
-4. **Open your browser:**
-Navigate to `http://localhost:5001`
+## 📋 Requirements
 
-## Deployment to Vercel
+- Python 3.8 or higher
+- Google Gemini API Key (get one at [Google AI Studio](https://makersuite.google.com/app/apikey))
 
-### Prerequisites
-- GitHub account
-- Vercel account (with authorization already set up)
+## 🌐 Deployment to Cloud
 
-### Steps
+This application can run completely in the cloud! Recommended platforms:
 
-1. **Push to GitHub:**
-```bash
-git init
-git add .
-git commit -m "Initial commit"
-git branch -M main
-git remote add origin https://github.com/your-username/your-repo-name.git
-git push -u origin main
-```
+- **Heroku** - Easy setup with free tier
+- **Railway** - Modern interface, great free tier
+- **Render** - Automatic deployments
+- **PythonAnywhere** - Beginner-friendly
+- **AWS/Azure/GCP** - For production scaling
 
-2. **Deploy to Vercel:**
-   - Go to [Vercel Dashboard](https://vercel.com/dashboard)
-   - Click "New Project"
-   - Import your GitHub repository
-   - **Set Environment Variable:**
-     - Go to Project Settings → Environment Variables
-     - Add `GEMINI_API_KEY` with your API key value
-   - Click "Deploy"
+### Environment Variables for Cloud Deployment
 
-3. **That's it!** Your app will be live at `https://your-project.vercel.app`
+Set these in your cloud platform's environment settings:
 
-### Project Structure for Vercel
+- `GEMINI_API_KEY` - Your Google Gemini API key (required)
+
+The app will automatically use the port provided by the cloud platform.
+
+## 📖 Usage
+
+1. **Select Reply Language:** Choose your preferred language for AI responses (Tigrinya, English, Norwegian, Arabic, or Amharic)
+2. **Type Your Message:** Enter your question in any supported language
+3. **AI Response:** The AI will:
+   - Auto-detect your input language
+   - Translate Tigrinya input to English for AI processing
+   - Generate a response
+   - Translate the response to your chosen reply language
+4. **Translate Feature:** Use the translate button to open Google Translate in your browser
+
+## 🎯 Supported Languages
+
+### UI Languages:
+- ትግርኛ (Tigrinya) - Default
+- English
+- Norsk (Norwegian)
+
+### Reply/Translation Languages:
+- ትግርኛ (Tigrinya)
+- English
+- Norsk (Norwegian)
+- Arabic (العربية)
+- Amharic (አማርኛ)
+
+## 📁 Project Structure
 
 ```
 .
-├── api/
-│   └── index.py          # Vercel serverless function wrapper
-├── app.py                # Main Flask application
+├── app.py                  # Flask application
+├── requirements.txt        # Python dependencies
+├── .gitignore             # Git ignore rules
+├── README.md              # This file
 ├── templates/
-│   └── index.html       # Main HTML template
-├── static/
-│   ├── css/
-│   │   └── style.css
-│   └── js/
-│       ├── script.js
-│       └── i18n.js
-├── requirements.txt      # Python dependencies
-├── vercel.json          # Vercel configuration
-└── .gitignore          # Git ignore rules
+│   └── index.html         # Main HTML template
+└── static/
+    ├── css/
+    │   └── style.css      # Styling (glassmorphic design)
+    └── js/
+        ├── script.js      # JavaScript functionality
+        └── i18n.js        # Internationalization
 ```
 
-## Environment Variables
-
-- `GEMINI_API_KEY`: Your Google Gemini API key (required for AI functionality)
-- `PORT`: Server port (defaults to 5001 for local development)
-- `FLASK_DEBUG`: Enable debug mode (defaults to True for local)
-
-## Technologies Used
+## 🛠️ Technologies Used
 
 - **Flask** - Web framework
-- **Google Gemini API** - AI responses
-- **deep-translator** - Translation service
+- **Google Gemini AI** - AI responses
+- **Google Translate** (via deep-translator) - Translation service
 - **HTML5/CSS3** - Modern UI with glassmorphism
-- **JavaScript** - Client-side interactions
+- **JavaScript** - Interactive functionality and i18n
 
-## Notes
+## 🔒 Security Notes
 
-- The API key should be set as an environment variable in Vercel (never commit it to Git)
-- The app automatically handles language detection and translation
-- Tigrinya input is always translated to English for the AI, then back to the target language
-- The UI is fully internationalized with support for Tigrinya, English, and Norwegian
+- ⚠️ **Never commit your API keys to GitHub**
+- Use environment variables for sensitive data
+- The default API key in `app.py` is for local development only
+- For production, always use environment variables
 
-## License
+## 🐛 Troubleshooting
 
-MIT License
+**Server won't start:**
+- Check if port 5001 is available
+- Ensure all dependencies are installed: `pip install -r requirements.txt`
+
+**API errors:**
+- Verify your `GEMINI_API_KEY` is set correctly
+- Check API quota limits at [Google AI Studio](https://makersuite.google.com/app/apikey)
+
+**Translation not working:**
+- Ensure you have internet connection (uses Google Translate API)
+- Check browser console for errors
+
+## 📝 License
+
+This project is open source and available for personal and commercial use.
+
+## 🤝 Contributing
+
+Contributions are welcome! Please feel free to submit a Pull Request.
+
+## 📧 Support
+
+For issues or questions, please open an issue on GitHub.
+
+---
+
+**Made with ❤️ for the Tigrinya-speaking community**
