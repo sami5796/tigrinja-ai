@@ -8,7 +8,18 @@ app = Flask(__name__)
 
 # Configure Gemini AI - use environment variable for cloud deployment
 GEMINI_API_KEY = os.environ.get('GEMINI_API_KEY', 'AIzaSyDxxKQoHOqeE9e2EKZ4O4Qtm70HnFfH5hw')
-genai.configure(api_key=GEMINI_API_KEY)
+
+# Validate API key exists
+if not GEMINI_API_KEY or GEMINI_API_KEY.strip() == '':
+    print("ERROR: GEMINI_API_KEY environment variable is not set!")
+else:
+    print(f"Gemini API key configured (length: {len(GEMINI_API_KEY)})")
+
+try:
+    genai.configure(api_key=GEMINI_API_KEY)
+    print("Gemini API configured successfully")
+except Exception as e:
+    print(f"ERROR configuring Gemini API: {e}")
 
 # Cache available model name
 AVAILABLE_MODEL = None
@@ -264,7 +275,9 @@ def chat():
 
 Question: {ai_input}"""
         
+        print(f"Calling AI with prompt (length: {len(enhanced_prompt)})")
         ai_response = get_ai_response(enhanced_prompt)
+        print(f"AI response received: {ai_response is not None}")
         if not ai_response:
             # Provide a helpful error message based on what might have happened
             # Check if it's likely a rate limit issue
