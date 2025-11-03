@@ -180,6 +180,11 @@ def get_ai_response(message):
     import time
     from concurrent.futures import ThreadPoolExecutor, TimeoutError as FutureTimeoutError
     
+    # Check if Gemini is configured
+    if GEMINI_API_KEY is None:
+        print("[AI] ERROR: GEMINI_API_KEY is None - Gemini not configured")
+        return None
+    
     # CRITICAL: Vercel timeout is 10s, we MUST finish in <3s for AI call
     MAX_AI_TIME = 3  # Maximum seconds - extremely aggressive!
     
@@ -187,6 +192,12 @@ def get_ai_response(message):
     attempt_start = time.time()
     
     try:
+        # Configure Gemini if not already done
+        try:
+            genai.configure(api_key=GEMINI_API_KEY)
+        except Exception as e:
+            print(f"[AI] WARNING: Error configuring Gemini (might already be configured): {e}")
+        
         # Get available model (with caching) - should be instant
         print(f"[AI] Getting available model...")
         model_name = get_available_model()
@@ -195,7 +206,11 @@ def get_ai_response(message):
             return None
         
         print(f"[AI] Using model: {model_name}")
-        model = genai.GenerativeModel(model_name)
+        try:
+            model = genai.GenerativeModel(model_name)
+        except Exception as e:
+            print(f"[AI] ERROR creating GenerativeModel: {e}")
+            return None
         
         # Generate content with generation config for faster responses
         generation_config = {
@@ -210,7 +225,11 @@ def get_ai_response(message):
         gen_time = 0
         
         def call_gemini():
-            return model.generate_content(message, generation_config=generation_config)
+            try:
+                return model.generate_content(message, generation_config=generation_config)
+            except Exception as e:
+                print(f"[AI] ERROR in call_gemini: {type(e).__name__}: {e}")
+                raise
         
         try:
             # Use ThreadPoolExecutor to add timeout
@@ -223,7 +242,16 @@ def get_ai_response(message):
                 except FutureTimeoutError:
                     gen_time = time.time() - gen_start
                     print(f"[AI] ❌ TIMEOUT: generate_content exceeded {MAX_AI_TIME}s (took {gen_time:.2f}s)")
-                    future.cancel()
+                    try:
+                        future.cancel()
+                    except:
+                        pass
+                    return None
+                except Exception as e:
+                    gen_time = time.time() - gen_start
+                    print(f"[AI] Exception in future.result() after {gen_time:.2f}s: {type(e).__name__}: {e}")
+                    import traceback
+                    traceback.print_exc()
                     return None
         except Exception as e:
             gen_time = time.time() - gen_start
